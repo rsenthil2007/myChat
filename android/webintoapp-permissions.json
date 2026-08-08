@@ -1,0 +1,46 @@
+{
+  "app": "myChat",
+  "wrapper": "WebInto.app / Capacitor / Cordova",
+  "permissions": [
+    {
+      "name": "android.permission.INTERNET",
+      "required": true,
+      "reason": "Chat sync, whiteboard, SSE, HTTPS API"
+    },
+    {
+      "name": "android.permission.ACCESS_NETWORK_STATE",
+      "required": true,
+      "reason": "Detect connectivity for shared room mode"
+    },
+    {
+      "name": "android.permission.RECORD_AUDIO",
+      "required": true,
+      "reason": "Voice notes via getUserMedia / MediaRecorder",
+      "webintoapp": "AUDIO",
+      "runtime": true
+    },
+    {
+      "name": "android.permission.MODIFY_AUDIO_SETTINGS",
+      "required": true,
+      "reason": "WebView mic pipeline / echo cancellation stability"
+    }
+  ],
+  "notRequired": [
+    "CAMERA",
+    "LOCATION",
+    "NOTIFICATIONS",
+    "WRITE_EXTERNAL_STORAGE"
+  ],
+  "webintoappChecklist": [
+    "Set app URL to your hosted myChat HTTPS origin (preferred) or local HTTPS for testing",
+    "Enable Microphone / Audio permission in WebInto.app Permissions",
+    "Allow your API host in network / cleartext rules only if you must use HTTP (HTTPS recommended)",
+    "Self-signed LAN certs often fail inside WebView — use a real TLS cert or trusted local CA for packaged apps",
+    "Voice notes need a user tap (already implemented) so the runtime permission prompt can show"
+  ],
+  "notes": [
+    "js/native-bridge.js calls WebInto.app permissions CHECK/ASK for AUDIO before getUserMedia when Native.call exists",
+    "Drawing and whiteboard need no extra Android permissions",
+    "Pictionary is feature-flagged off in the UI by default"
+  ]
+}

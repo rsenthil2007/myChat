@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="description" content="myChat — secure room chat with sketches, voice notes, and a shared whiteboard" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>myChat</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f172a'/%3E%3Cpath d='M14 40c0-10 8-18 18-18h10c8 0 14 6 14 14v4c0 6-5 11-11 11H28l-10 8v-8c-2-2-4-5-4-11z' fill='%232dd4bf'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Setup screen -->
+    <section id="setup-screen" class="screen setup-screen" hidden>
+      <div class="setup-panel">
+        <p class="brand">myChat</p>
+        <h1>Join a room</h1>
+        <p class="setup-sub">Secure room chat with sketches, voice notes, and a shared whiteboard.</p>
+        <label class="field">
+          <span>Your name</span>
+          <input id="name-input" type="text" maxlength="24" placeholder="e.g. Alex" autocomplete="nickname" />
+        </label>
+        <label class="field">
+          <span>Room code</span>
+          <input id="room-input" type="text" maxlength="24" placeholder="e.g. study-math" autocomplete="off" />
+        </label>
+        <button id="join-btn" class="btn primary" type="button">Enter room</button>
+        <p class="hint">Checking sync mode…</p>
+      </div>
+    </section>
+
+    <!-- Chat / Board screen -->
+    <section id="chat-screen" class="screen chat-screen" hidden>
+      <header class="chat-header">
+        <div class="header-text">
+          <p class="brand-sm">myChat <span id="sync-badge" class="sync-badge" hidden>Local</span></p>
+          <h1 id="room-title">Room</h1>
+        </div>
+        <div class="header-actions">
+          <button id="export-btn" class="icon-btn" type="button" hidden aria-hidden="true" tabindex="-1"></button>
+          <button id="clear-btn" class="icon-btn" type="button" title="Clear chat" aria-label="Clear chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-1 0v14a2 2 0 01-2 2H9a2 2 0 01-2-2V6h10z"/></svg>
+          </button>
+          <button id="leave-btn" class="icon-btn" type="button" title="Leave room" aria-label="Leave room">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <nav class="room-tabs" role="tablist" aria-label="Room sections">
+        <button id="tab-chat" class="room-tab active" type="button" role="tab" aria-selected="true">Chat</button>
+        <button id="tab-board" class="room-tab" type="button" role="tab" aria-selected="false">Board</button>
+        <!-- Re-enable via FEATURES.pictionary in js/app.js -->
+        <button id="tab-pic" class="room-tab" type="button" role="tab" aria-selected="false" hidden>Pictionary</button>
+      </nav>
+
+      <div id="panel-chat" class="room-panel" role="tabpanel">
+        <main id="message-list" class="message-list" aria-live="polite"></main>
+
+        <footer class="composer">
+          <button id="draw-open-btn" class="icon-btn composer-tool" type="button" title="Draw" aria-label="Open drawing canvas">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </button>
+          <button id="audio-btn" class="icon-btn composer-tool" type="button" title="Record voice note" aria-label="Record audio">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5 11a7 7 0 0014 0M12 18v3"/></svg>
+          </button>
+          <textarea id="text-input" rows="1" placeholder="Message…" maxlength="2000" enterkeyhint="send"></textarea>
+          <button id="send-btn" class="btn send-btn" type="button" aria-label="Send message">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </footer>
+        <div id="rec-banner" class="rec-banner" hidden>Recording…</div>
+      </div>
+
+      <div id="panel-board" class="room-panel" role="tabpanel" hidden>
+        <div class="board-status">
+          <p id="board-status-text" class="board-status-text">Shared board — each member gets a unique color</p>
+        </div>
+        <div class="board-toolbar">
+          <div id="board-tools" class="board-tools" role="toolbar" aria-label="Sketch tools">
+            <button type="button" class="board-tool active" data-tool="pen" title="Pen">Pen</button>
+            <button type="button" class="board-tool" data-tool="erase" title="Eraser">Eraser</button>
+            <button type="button" class="board-tool" data-tool="line" title="Line">Line</button>
+            <button type="button" class="board-tool" data-tool="arrow" title="Arrow">Arrow</button>
+            <button type="button" class="board-tool" data-tool="rect" title="Rectangle">Rect</button>
+            <button type="button" class="board-tool" data-tool="circle" title="Circle">Circle</button>
+            <button type="button" class="board-tool" data-tool="oval" title="Oval">Oval</button>
+            <button type="button" class="board-tool" data-tool="text" title="Text label">Text</button>
+          </div>
+          <div id="board-swatches" class="board-swatches" role="group" aria-label="Board colors"></div>
+          <label class="tool-group">
+            <span>Custom</span>
+            <input id="board-color" type="color" value="#0f172a" title="Pick a free custom color" />
+          </label>
+          <label class="tool-group">
+            <span>Size</span>
+            <input id="board-size" type="range" min="2" max="24" value="5" />
+          </label>
+          <button id="board-undo-btn" class="btn ghost compact" type="button">Undo</button>
+          <button id="board-clear-mine-btn" class="btn ghost compact" type="button">Clear mine</button>
+          <button id="board-clear-all-btn" class="btn ghost compact" type="button">Clear all</button>
+        </div>
+        <div class="board-canvas-wrap">
+          <canvas id="board-bg" aria-hidden="true"></canvas>
+          <canvas id="board-mine"></canvas>
+        </div>
+        <div id="board-layers" class="board-layers"></div>
+      </div>
+
+      <div id="panel-pic" class="room-panel" role="tabpanel" hidden>
+        <div class="pic-status">
+          <p id="pic-status-text" class="pic-status-text">Waiting to start…</p>
+          <p id="pic-word-line" class="pic-word-line"></p>
+        </div>
+        <div class="pic-toolbar">
+          <label class="tool-group">
+            <span>Color</span>
+            <input id="pic-color" type="color" value="#0f172a" />
+          </label>
+          <label class="tool-group">
+            <span>Size</span>
+            <input id="pic-size" type="range" min="2" max="24" value="5" />
+          </label>
+          <button id="pic-clear-btn" class="btn ghost compact" type="button">Clear</button>
+          <button id="pic-skip-btn" class="btn ghost compact" type="button">Skip</button>
+        </div>
+        <div class="pic-canvas-wrap">
+          <canvas id="pic-canvas"></canvas>
+        </div>
+        <div class="pic-side">
+          <div id="pic-scores" class="pic-scores"></div>
+          <div id="pic-guesses" class="pic-guesses"></div>
+        </div>
+        <footer class="pic-composer">
+          <button id="pic-start-btn" class="btn primary compact" type="button">I'll draw</button>
+          <input id="pic-guess-input" type="text" maxlength="40" placeholder="Type your guess…" autocomplete="off" />
+          <button id="pic-guess-btn" class="btn send-btn" type="button" aria-label="Submit guess">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </footer>
+      </div>
+    </section>
+
+    <!-- Drawing overlay (chat sketches) -->
+    <section id="draw-screen" class="screen draw-screen" hidden>
+      <header class="draw-header">
+        <button id="draw-cancel-btn" class="btn ghost" type="button">Cancel</button>
+        <p class="draw-title">Sketch</p>
+        <button id="draw-send-btn" class="btn primary compact" type="button">Send</button>
+      </header>
+      <div class="draw-toolbar">
+        <label class="tool-group">
+          <span>Color</span>
+          <input id="pen-color" type="color" value="#0f172a" />
+        </label>
+        <label class="tool-group">
+          <span>Size</span>
+          <input id="pen-size" type="range" min="2" max="24" value="4" />
+        </label>
+        <button id="draw-clear-btn" class="btn ghost compact" type="button">Clear</button>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="draw-canvas"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <script src="js/config.js?v=18"></script>
+  <script src="js/crypto-pipe.js?v=18"></script>
+  <script src="js/storage.js?v=18"></script>
+  <script src="js/canvas-draw.js?v=18"></script>
+  <script src="js/native-bridge.js?v=18"></script>
+  <script src="js/pictionary.js?v=18"></script>
+  <script src="js/whiteboard.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
+</body>
+</html>
