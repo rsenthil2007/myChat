@@ -19,6 +19,8 @@ import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.util.UUID
 
+const val DEFAULT_SERVER = "http://10.0.2.2:8080"
+
 data class ChatUiState(
     val displayName: String = "",
     val roomInput: String = "lobby",
@@ -150,8 +152,4 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun newAuthorId(): String =
         "a_" + UUID.randomUUID().toString().replace("-", "").take(12)
-
-    companion object {
-        const val DEFAULT_SERVER = "http://10.0.2.2:8080"
-    }
 }
