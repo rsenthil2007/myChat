@@ -1,4 +1,4 @@
-package `in`.microbear.mychat
+package io.microbear.mychat
 
 import android.app.Application
 import android.content.Context
@@ -7,9 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import `in`.microbear.mychat.data.ChatApi
-import `in`.microbear.mychat.data.ChatMessage
-import `in`.microbear.mychat.data.OutgoingText
+import io.microbear.mychat.data.ChatApi
+import io.microbear.mychat.data.ChatMessage
+import io.microbear.mychat.data.OutgoingText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

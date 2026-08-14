@@ -1,4 +1,4 @@
-package `in`.microbear.mychat
+package io.microbear.mychat
 
 object RoomIds {
     fun normalize(raw: String): String {

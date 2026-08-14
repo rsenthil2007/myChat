@@ -24,6 +24,14 @@ jobs:
         working-directory: android
         run: gradle :app:assembleDebug --stacktrace
       - uses: actions/upload-artifact@v6
+        if: success()
         with:
           name: mychat-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: android-build-reports
+          path: |
+            android/app/build/reports/**
+            android/app/build/outputs/**

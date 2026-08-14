@@ -1,4 +1,4 @@
-package `in`.microbear.mychat
+package io.microbear.mychat
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -37,7 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import `in`.microbear.mychat.data.ChatMessage
+import io.microbear.mychat.data.ChatMessage
 
 private val Slate = Color(0xFF0F172A)
 private val Panel = Color(0xFF1E293B)

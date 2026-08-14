@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "in.microbear.mychat"
+    namespace = "io.microbear.mychat"
     compileSdk = 35
 
     defaultConfig {

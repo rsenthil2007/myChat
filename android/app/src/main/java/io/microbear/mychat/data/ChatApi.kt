@@ -1,4 +1,4 @@
-package `in`.microbear.mychat.data
+package io.microbear.mychat.data
 
 import com.google.gson.Gson
 import okhttp3.MediaType.Companion.toMediaType
