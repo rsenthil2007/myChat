@@ -123,6 +123,10 @@ myChat/
   data/rooms/
 ```
 
+## Native Android (Kotlin)
+
+v0.1 text client lives in [`android/`](android/README.md). Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
+
 ## Wrap as a mobile app (WebInto.app)
 
 | Feature | Android permission |
@@ -138,4 +142,4 @@ myChat/
 
 - Auth / room passwords
 - Migrate LAN crypto to Web Crypto AES-GCM when HTTPS-only is acceptable
-"# myChat" 
+ 
