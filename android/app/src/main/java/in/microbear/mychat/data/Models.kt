@@ -1,4 +1,4 @@
-package in.microbear.mychat.data
+package `in`.microbear.mychat.data
 
 import com.google.gson.annotations.SerializedName
 
