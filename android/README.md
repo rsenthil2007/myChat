@@ -19,7 +19,7 @@ The older WebInto wrap notes stay in `Wrap/`.
 ## GitHub debug APK
 
 Workflow: `.github/workflows/android-debug.yml`  
-On push to `android/**` (or manual **Run workflow**), GitHub builds `app-debug.apk` as an artifact.
+On push to `android/**` (or manual **Actions → Android debug APK → Run workflow**), GitHub builds `app-debug.apk` as artifact **mychat-debug-apk**.
 
 ## Next slices (later)
 
