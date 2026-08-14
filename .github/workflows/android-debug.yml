@@ -17,21 +17,33 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v4
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: "8.9"
+          cache-disabled: true
       - name: Assemble debug APK
         working-directory: android
-        run: gradle :app:assembleDebug --stacktrace
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" > local.properties
+          set +e
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace --no-daemon --no-build-cache --no-configuration-cache 2>&1 | tee gradle-assemble.log
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            excerpt=$(grep -E '^(e: |FAILURE:|\* What went wrong:|> Task .* FAILED)' gradle-assemble.log | tail -n 30)
+            echo "$excerpt"
+            echo "::error::${excerpt}"
+            exit "$status"
+          fi
       - uses: actions/upload-artifact@v6
         if: success()
         with:
           name: mychat-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v6
-        if: failure()
+        if: always()
         with:
-          name: android-build-reports
-          path: |
-            android/app/build/reports/**
-            android/app/build/outputs/**
+          name: gradle-assemble-log
+          path: android/gradle-assemble.log
