@@ -11,6 +11,7 @@ captures/
 *.apk
 *.aab
 *.ap_
+*.zip
 *.dex
 keystore.properties
 *.jks

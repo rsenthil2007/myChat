@@ -9,7 +9,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.microbear.mychat.data.ChatApi
 import io.microbear.mychat.data.ChatMessage
-import io.microbear.mychat.data.OutgoingText
+import io.microbear.mychat.data.OutgoingSecureText
+import io.microbear.mychat.data.SecurePipe
+import io.microbear.mychat.data.toEnvelope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,6 +41,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("mychat", Context.MODE_PRIVATE)
     private val api = ChatApi()
     private var pollJob: Job? = null
+    private val openedCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     var ui by mutableStateOf(
         ChatUiState(
@@ -76,15 +79,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val health = withContext(Dispatchers.IO) { api.health(server) }
                 if (!health.ok) error("Server is not ready")
-                val snap = withContext(Dispatchers.IO) { api.loadRoom(server, room) }
+                val (opened, count) = withContext(Dispatchers.IO) {
+                    val snap = api.loadRoom(server, room)
+                    reveal(snap.messages, room) to snap.messages.size
+                }
                 ui = ui.copy(
                     busy = false,
                     joined = true,
                     displayName = name,
                     roomId = room,
                     serverUrl = server,
-                    messages = snap.messages,
-                    status = "Synced · ${snap.messages.size} messages",
+                    messages = opened,
+                    status = "Synced · $count messages",
                 )
                 startPolling()
             } catch (e: Exception) {
@@ -101,29 +107,40 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun leave() {
         pollJob?.cancel()
         pollJob = null
+        openedCache.clear()
+        SecurePipe.clearKeyCache()
         ui = ui.copy(joined = false, messages = emptyList(), draft = "", status = "Left room")
     }
 
     fun send() {
         val text = ui.draft.trim()
         if (!ui.joined || text.isEmpty() || ui.busy) return
-        val outgoing = OutgoingText(
-            id = "m_${System.currentTimeMillis().toString(36)}_${UUID.randomUUID().toString().take(6)}",
-            authorId = ui.authorId,
-            authorName = ui.displayName,
-            createdAt = Instant.now().toString(),
-            text = text,
-        )
+        val roomId = ui.roomId
+        val server = ui.serverUrl
+        val outgoingMeta = Triple(ui.authorId, ui.displayName, Instant.now().toString())
         ui = ui.copy(busy = true, draft = "", error = null)
         viewModelScope.launch {
             try {
-                val snap = withContext(Dispatchers.IO) {
-                    api.sendText(ui.serverUrl, ui.roomId, outgoing)
+                val (opened, count) = withContext(Dispatchers.IO) {
+                    val envelope = SecurePipe.sealText(text, roomId)
+                    val outgoing = OutgoingSecureText(
+                        id = "m_${System.currentTimeMillis().toString(36)}_${UUID.randomUUID().toString().take(6)}",
+                        authorId = outgoingMeta.first,
+                        authorName = outgoingMeta.second,
+                        createdAt = outgoingMeta.third,
+                        v = envelope.v,
+                        zip = envelope.zip,
+                        iv = envelope.iv,
+                        mac = envelope.mac,
+                        data = envelope.data,
+                    )
+                    val snap = api.sendSecureText(server, roomId, outgoing)
+                    reveal(snap.messages, roomId) to snap.messages.size
                 }
                 ui = ui.copy(
                     busy = false,
-                    messages = snap.messages,
-                    status = "Synced · ${snap.messages.size} messages",
+                    messages = opened,
+                    status = "Synced · $count messages",
                 )
             } catch (e: Exception) {
                 ui = ui.copy(busy = false, draft = text, error = e.message ?: "Send failed")
@@ -137,16 +154,45 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             while (isActive && ui.joined) {
                 delay(2000)
                 try {
-                    val snap = withContext(Dispatchers.IO) { api.loadRoom(ui.serverUrl, ui.roomId) }
+                    val (opened, count) = withContext(Dispatchers.IO) {
+                        val snap = api.loadRoom(ui.serverUrl, ui.roomId)
+                        reveal(snap.messages, ui.roomId) to snap.messages.size
+                    }
                     ui = ui.copy(
-                        messages = snap.messages,
-                        status = "Synced · ${snap.messages.size} messages",
+                        messages = opened,
+                        status = "Synced · $count messages",
                         error = null,
                     )
                 } catch (e: Exception) {
                     ui = ui.copy(status = "Reconnecting…", error = e.message)
                 }
             }
+        }
+    }
+
+    private fun reveal(messages: List<ChatMessage>, roomId: String): List<ChatMessage> {
+        return messages.map { msg ->
+            val cached = openedCache[msg.id]
+            if (cached != null) return@map msg.copy(displayText = cached)
+            val shown = when (msg.type) {
+                "drawing" -> "[sketch]"
+                "audio" -> "[voice note]"
+                else -> openTextMessage(msg, roomId)
+            }
+            if (shown != "Could not decrypt — check the room code.") {
+                openedCache[msg.id] = shown
+            }
+            msg.copy(displayText = shown)
+        }
+    }
+
+    private fun openTextMessage(msg: ChatMessage, roomId: String): String {
+        if (!msg.secure) return msg.text.orEmpty().ifBlank { "[empty]" }
+        val envelope = msg.toEnvelope() ?: return "Could not decrypt — check the room code."
+        return try {
+            SecurePipe.openText(envelope, roomId).ifBlank { "[empty]" }
+        } catch (_: Exception) {
+            "Could not decrypt — check the room code."
         }
     }
 

@@ -93,7 +93,7 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         Text("Join a room", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "v0.1 text only. Same rooms as the web app. Emulator default is the PC server at 10.0.2.2:8080.",
+            "v0.2 text, sealed with the room code like the web app. Emulator default is the PC server at 10.0.2.2:8080.",
             color = Mute,
             fontSize = 13.sp,
         )
@@ -213,11 +213,12 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
 
 @Composable
 private fun MessageBubble(msg: ChatMessage, mine: Boolean) {
-    val body = when {
-        msg.secure -> "[encrypted — open in web myChat]"
-        msg.type == "drawing" -> "[sketch]"
-        msg.type == "audio" -> "[voice note]"
-        else -> msg.text.orEmpty().ifBlank { "[empty]" }
+    val body = msg.displayText.ifBlank {
+        when {
+            msg.type == "drawing" -> "[sketch]"
+            msg.type == "audio" -> "[voice note]"
+            else -> msg.text.orEmpty().ifBlank { "[empty]" }
+        }
     }
     Column(
         modifier = Modifier.fillMaxWidth(),

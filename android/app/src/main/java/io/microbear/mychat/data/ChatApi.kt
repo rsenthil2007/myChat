@@ -35,7 +35,7 @@ class ChatApi(
         }
     }
 
-    fun sendText(baseUrl: String, roomId: String, message: OutgoingText): RoomSnapshot {
+    fun sendSecureText(baseUrl: String, roomId: String, message: OutgoingSecureText): RoomSnapshot {
         val payload = gson.toJson(message).toRequestBody(jsonType)
         val req = Request.Builder()
             .url(join(baseUrl, "/api/rooms/$roomId/messages"))
