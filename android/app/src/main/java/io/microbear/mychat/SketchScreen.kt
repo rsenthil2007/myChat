@@ -11,8 +11,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
@@ -67,7 +68,8 @@ fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<Sk
         modifier = Modifier
             .fillMaxSize()
             .background(Slate)
-            .safeDrawingPadding(),
+            .imePadding()
+            .displayCutoutPadding(),
     ) {
         Row(
             modifier = Modifier

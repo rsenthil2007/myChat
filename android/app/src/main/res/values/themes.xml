@@ -1,7 +1,8 @@
 <resources>
     <style name="Theme.MyChat" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">@color/slate</item>
-        <item name="android:navigationBarColor">@color/slate</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/slate</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

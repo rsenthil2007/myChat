@@ -15,11 +15,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,6 +54,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.microbear.mychat.data.ChatMessage
 
 private val Slate = Color(0xFF0F172A)
@@ -73,6 +77,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        hideSystemBars()
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -117,6 +122,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
     private fun onMicTap(state: ChatUiState) {
         if (state.recording) {
             vm.stopRecording(send = true)
@@ -142,16 +159,17 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(Slate)
-            .safeDrawingPadding()
+            .imePadding()
+            .displayCutoutPadding()
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("myChat", color = Teal, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text("myChat ${BuildConfig.VERSION_NAME}", color = Teal, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Text("Join a room", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "v0.3 chat: sealed text, sketches, and voice notes. Same rooms as the web app.",
+            "Sealed text, sketches, and voice notes. Same rooms as the web app.",
             color = Mute,
             fontSize = 13.sp,
         )
@@ -210,7 +228,8 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
         modifier = Modifier
             .fillMaxSize()
             .background(Slate)
-            .safeDrawingPadding(),
+            .imePadding()
+            .displayCutoutPadding(),
     ) {
         Row(
             modifier = Modifier
@@ -220,7 +239,7 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                Text("myChat", color = Teal, fontSize = 12.sp)
+                Text("myChat ${BuildConfig.VERSION_NAME}", color = Teal, fontSize = 12.sp)
                 Text(state.roomId, color = Mist, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 Text(state.status, color = Mute, fontSize = 12.sp)
             }
