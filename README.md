@@ -125,7 +125,7 @@ myChat/
 
 ## Native Android (Kotlin)
 
-v0.2 text client lives in [`android/`](android/README.md). It seals and opens the same room-code envelopes as the browser. Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
+v0.3 chat client lives in [`android/`](android/README.md). It seals text, sketches, and voice notes with the same room-code pipe as the browser. Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
 
 ## Wrap as a mobile app (WebInto.app)
 

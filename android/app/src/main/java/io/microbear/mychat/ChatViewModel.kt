@@ -2,26 +2,41 @@ package io.microbear.mychat
 
 import android.app.Application
 import android.content.Context
+import android.media.MediaRecorder
+import android.net.Uri
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.google.gson.JsonObject
 import io.microbear.mychat.data.ChatApi
 import io.microbear.mychat.data.ChatMessage
-import io.microbear.mychat.data.OutgoingSecureText
 import io.microbear.mychat.data.SecurePipe
 import io.microbear.mychat.data.toEnvelope
+import io.microbear.mychat.data.toOutgoing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
 const val DEFAULT_SERVER = "http://10.0.2.2:8080"
+
+data class SketchStroke(
+    val color: String,
+    val size: Float,
+    val points: List<Float>,
+)
 
 data class ChatUiState(
     val displayName: String = "",
@@ -35,13 +50,29 @@ data class ChatUiState(
     val status: String = "Not connected",
     val busy: Boolean = false,
     val error: String? = null,
+    val sketching: Boolean = false,
+    val recording: Boolean = false,
+    val confirmClear: Boolean = false,
+    val playingId: String? = null,
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("mychat", Context.MODE_PRIVATE)
     private val api = ChatApi()
     private var pollJob: Job? = null
-    private val openedCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val openedCache = java.util.concurrent.ConcurrentHashMap<String, ChatMessage>()
+    private var recorder: MediaRecorder? = null
+    private var recordFile: File? = null
+    private var recordTimeout: Job? = null
+    private val player: ExoPlayer = ExoPlayer.Builder(app).build().also { exo ->
+        exo.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    ui = ui.copy(playingId = null)
+                }
+            }
+        })
+    }
 
     var ui by mutableStateOf(
         ChatUiState(
@@ -105,45 +136,179 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun leave() {
+        stopPlayback()
+        cancelRecording()
         pollJob?.cancel()
         pollJob = null
         openedCache.clear()
         SecurePipe.clearKeyCache()
-        ui = ui.copy(joined = false, messages = emptyList(), draft = "", status = "Left room")
+        ui = ui.copy(
+            joined = false,
+            messages = emptyList(),
+            draft = "",
+            status = "Left room",
+            sketching = false,
+            recording = false,
+            confirmClear = false,
+        )
+    }
+
+    fun openSketch() { ui = ui.copy(sketching = true, error = null) }
+    fun closeSketch() { ui = ui.copy(sketching = false) }
+    fun askClear() { ui = ui.copy(confirmClear = true) }
+    fun dismissClear() { ui = ui.copy(confirmClear = false) }
+
+    fun onMicDenied() {
+        ui = ui.copy(error = "Microphone permission is required for voice notes.")
     }
 
     fun send() {
         val text = ui.draft.trim()
         if (!ui.joined || text.isEmpty() || ui.busy) return
+        ui = ui.copy(draft = "")
+        postSecure("text", restoreDraft = text) { SecurePipe.sealText(text, ui.roomId) }
+    }
+
+    fun sendSketch(width: Int, height: Int, strokes: List<SketchStroke>) {
+        if (!ui.joined || ui.busy || strokes.isEmpty()) return
+        val payload = mapOf(
+            "w" to width,
+            "h" to height,
+            "strokes" to strokes.map {
+                mapOf("t" to "pen", "c" to it.color, "s" to it.size, "p" to it.points)
+            },
+        )
+        ui = ui.copy(sketching = false)
+        postSecure("drawing") { SecurePipe.sealJson(payload, ui.roomId) }
+    }
+
+    fun startRecording() {
+        if (!ui.joined || ui.busy || ui.recording) return
+        try {
+            val file = File(getApplication<Application>().cacheDir, "mychat-rec.m4a")
+            if (file.exists()) file.delete()
+            val rec = if (Build.VERSION.SDK_INT >= 31) {
+                MediaRecorder(getApplication())
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+            rec.setAudioSource(MediaRecorder.AudioSource.MIC)
+            rec.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            rec.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            rec.setAudioEncodingBitRate(96_000)
+            rec.setAudioSamplingRate(44_100)
+            rec.setOutputFile(file.absolutePath)
+            rec.prepare()
+            rec.start()
+            recorder = rec
+            recordFile = file
+            ui = ui.copy(recording = true, error = null)
+            recordTimeout?.cancel()
+            recordTimeout = viewModelScope.launch {
+                delay(60_000)
+                if (ui.recording) stopRecording(send = true)
+            }
+        } catch (e: Exception) {
+            cancelRecording()
+            ui = ui.copy(error = e.message ?: "Could not start microphone")
+        }
+    }
+
+    fun stopRecording(send: Boolean) {
+        recordTimeout?.cancel()
+        recordTimeout = null
+        val file = recordFile
+        try {
+            recorder?.apply {
+                stop()
+                release()
+            }
+        } catch (_: Exception) {
+        }
+        recorder = null
+        recordFile = null
+        ui = ui.copy(recording = false)
+        if (!send || file == null || !file.exists() || file.length() < 64) {
+            file?.delete()
+            if (send) ui = ui.copy(error = "Recording was empty — tap the mic to start, tap again to send.")
+            return
+        }
+        val bytes = file.readBytes()
+        file.delete()
+        val b64 = Base64.getEncoder().encodeToString(bytes)
+        postSecure("audio") {
+            SecurePipe.sealJson(mapOf("mime" to "audio/mp4", "audio" to b64), ui.roomId)
+        }
+    }
+
+    fun toggleAudio(msg: ChatMessage) {
+        if (ui.playingId == msg.id) {
+            stopPlayback()
+            return
+        }
+        val bytes = msg.audioBytes ?: return
+        val mime = msg.audioMime ?: "audio/webm"
+        val ext = when {
+            "mp4" in mime || "aac" in mime || "m4a" in mime -> "m4a"
+            "webm" in mime -> "webm"
+            "ogg" in mime -> "ogg"
+            else -> "bin"
+        }
+        try {
+            val file = File(getApplication<Application>().cacheDir, "mychat-${msg.id}.$ext")
+            file.writeBytes(bytes)
+            player.stop()
+            player.clearMediaItems()
+            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            player.prepare()
+            player.play()
+            ui = ui.copy(playingId = msg.id, error = null)
+        } catch (e: Exception) {
+            ui = ui.copy(error = "Could not play this voice note on Android.")
+        }
+    }
+
+    fun clearRoom() {
+        if (!ui.joined || ui.busy) return
+        ui = ui.copy(busy = true, confirmClear = false, error = null)
         val roomId = ui.roomId
         val server = ui.serverUrl
-        val outgoingMeta = Triple(ui.authorId, ui.displayName, Instant.now().toString())
-        ui = ui.copy(busy = true, draft = "", error = null)
         viewModelScope.launch {
             try {
                 val (opened, count) = withContext(Dispatchers.IO) {
-                    val envelope = SecurePipe.sealText(text, roomId)
-                    val outgoing = OutgoingSecureText(
-                        id = "m_${System.currentTimeMillis().toString(36)}_${UUID.randomUUID().toString().take(6)}",
-                        authorId = outgoingMeta.first,
-                        authorName = outgoingMeta.second,
-                        createdAt = outgoingMeta.third,
-                        v = envelope.v,
-                        zip = envelope.zip,
-                        iv = envelope.iv,
-                        mac = envelope.mac,
-                        data = envelope.data,
-                    )
-                    val snap = api.sendSecureText(server, roomId, outgoing)
+                    val snap = api.clearRoom(server, roomId)
+                    openedCache.clear()
                     reveal(snap.messages, roomId) to snap.messages.size
                 }
+                ui = ui.copy(busy = false, messages = opened, status = "Synced · $count messages")
+            } catch (e: Exception) {
+                ui = ui.copy(busy = false, error = e.message ?: "Could not clear the room")
+            }
+        }
+    }
+
+    private fun postSecure(type: String, restoreDraft: String? = null, build: () -> SecurePipe.Envelope) {
+        val roomId = ui.roomId
+        val server = ui.serverUrl
+        val authorId = ui.authorId
+        val authorName = ui.displayName
+        val createdAt = Instant.now().toString()
+        ui = ui.copy(busy = true, error = null)
+        viewModelScope.launch {
+            try {
+                val (opened, count) = withContext(Dispatchers.IO) {
+                    val outgoing = build().toOutgoing(type, authorId, authorName, createdAt)
+                    val snap = api.sendSecure(server, roomId, outgoing)
+                    reveal(snap.messages, roomId) to snap.messages.size
+                }
+                ui = ui.copy(busy = false, messages = opened, status = "Synced · $count messages")
+            } catch (e: Exception) {
                 ui = ui.copy(
                     busy = false,
-                    messages = opened,
-                    status = "Synced · $count messages",
+                    draft = restoreDraft ?: ui.draft,
+                    error = e.message ?: "Send failed",
                 )
-            } catch (e: Exception) {
-                ui = ui.copy(busy = false, draft = text, error = e.message ?: "Send failed")
             }
         }
     }
@@ -161,7 +326,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     ui = ui.copy(
                         messages = opened,
                         status = "Synced · $count messages",
-                        error = null,
+                        error = if (ui.recording) ui.error else null,
                     )
                 } catch (e: Exception) {
                     ui = ui.copy(status = "Reconnecting…", error = e.message)
@@ -172,30 +337,107 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun reveal(messages: List<ChatMessage>, roomId: String): List<ChatMessage> {
         return messages.map { msg ->
-            val cached = openedCache[msg.id]
-            if (cached != null) return@map msg.copy(displayText = cached)
-            val shown = when (msg.type) {
-                "drawing" -> "[sketch]"
-                "audio" -> "[voice note]"
-                else -> openTextMessage(msg, roomId)
+            openedCache[msg.id]?.let { cached ->
+                return@map msg.copy(
+                    displayText = cached.displayText,
+                    sketchPng = cached.sketchPng,
+                    audioBytes = cached.audioBytes,
+                    audioMime = cached.audioMime,
+                )
             }
-            if (shown != "Could not decrypt — check the room code.") {
-                openedCache[msg.id] = shown
+            val opened = openMessage(msg, roomId)
+            if (!opened.displayText.startsWith("Could not decrypt")) {
+                openedCache[msg.id] = opened
             }
-            msg.copy(displayText = shown)
+            opened
         }
     }
 
-    private fun openTextMessage(msg: ChatMessage, roomId: String): String {
-        if (!msg.secure) return msg.text.orEmpty().ifBlank { "[empty]" }
-        val envelope = msg.toEnvelope() ?: return "Could not decrypt — check the room code."
-        return try {
-            SecurePipe.openText(envelope, roomId).ifBlank { "[empty]" }
-        } catch (_: Exception) {
-            "Could not decrypt — check the room code."
+    private fun openMessage(msg: ChatMessage, roomId: String): ChatMessage {
+        when (msg.type) {
+            "drawing" -> {
+                val body = openBody(msg, roomId) ?: return msg.copy(displayText = "Could not decrypt — check the room code.")
+                val png = DrawingRaster.pngFromBody(body)
+                return msg.copy(
+                    displayText = if (png == null) "(empty drawing)" else "",
+                    sketchPng = png,
+                )
+            }
+            "audio" -> {
+                val body = openBody(msg, roomId) ?: return msg.copy(displayText = "Could not decrypt — check the room code.")
+                val b64 = body.get("audio")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+                val mime = body.get("mime")?.takeIf { it.isJsonPrimitive }?.asString ?: "audio/webm"
+                val bytes = try {
+                    if (b64.isBlank()) null else Base64.getDecoder().decode(b64)
+                } catch (_: Exception) {
+                    null
+                }
+                return msg.copy(
+                    displayText = if (bytes == null) "(invalid audio)" else "Voice note",
+                    audioBytes = bytes,
+                    audioMime = mime,
+                )
+            }
+            else -> {
+                if (!msg.secure) {
+                    return msg.copy(displayText = msg.text.orEmpty().ifBlank { "[empty]" })
+                }
+                val envelope = msg.toEnvelope() ?: return msg.copy(displayText = "Could not decrypt — check the room code.")
+                return try {
+                    msg.copy(displayText = SecurePipe.openText(envelope, roomId).ifBlank { "[empty]" })
+                } catch (_: Exception) {
+                    msg.copy(displayText = "Could not decrypt — check the room code.")
+                }
+            }
         }
+    }
+
+    private fun openBody(msg: ChatMessage, roomId: String): JsonObject? {
+        if (!msg.secure) {
+            if (!msg.imageData.isNullOrBlank()) {
+                val obj = JsonObject()
+                obj.addProperty("imageData", msg.imageData)
+                return obj
+            }
+            return null
+        }
+        val envelope = msg.toEnvelope() ?: return null
+        return try {
+            SecurePipe.open(envelope, roomId)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun stopPlayback() {
+        try {
+            player.stop()
+            player.clearMediaItems()
+        } catch (_: Exception) {
+        }
+        ui = ui.copy(playingId = null)
+    }
+
+    private fun cancelRecording() {
+        try {
+            recorder?.apply {
+                reset()
+                release()
+            }
+        } catch (_: Exception) {
+        }
+        recorder = null
+        recordFile?.delete()
+        recordFile = null
     }
 
     private fun newAuthorId(): String =
         "a_" + UUID.randomUUID().toString().replace("-", "").take(12)
+
+    override fun onCleared() {
+        stopPlayback()
+        cancelRecording()
+        player.release()
+        super.onCleared()
+    }
 }

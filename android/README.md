@@ -1,9 +1,9 @@
-# Native myChat (Kotlin) — v0.2
+# Native myChat (Kotlin) — v0.3
 
-Text Android client for the same `server.py` rooms as the web app.
+Android client for the same `server.py` rooms as the web app.
 
-**In this version:** join a room, send/receive **text sealed with the room code** (same `SecurePipe` as the browser).  
-**Not yet:** sketches, voice, whiteboard (those still show as `[sketch]` / `[voice note]`).
+**In this version:** sealed **text**, **sketches**, and **voice notes**, plus **clear chat** for everyone.  
+**Not yet:** shared whiteboard tab (and Pictionary, which is hidden on the web too).
 
 The older WebInto wrap notes stay in `Wrap/`.
 
@@ -16,7 +16,7 @@ The older WebInto wrap notes stay in `Wrap/`.
 5. Run on an emulator. Default server URL is `http://10.0.2.2:8080` (emulator → your PC).
 6. On a physical phone, set **Server URL** to `http://YOUR-PC-LAN-IP:8080` (same Wi-Fi), or your HTTPS VPS later.
 
-Use the **same room code** as the browser. Incoming web messages decrypt on the phone; texts you send from the phone decrypt in the browser.
+Use the **same room code** as the browser. Sketches and voice notes go through the same room-code seal as the web client.
 
 ## GitHub debug APK
 
@@ -25,5 +25,5 @@ On push to `android/**` (or manual **Actions → Android debug APK → Run workf
 
 ## Next slices (later)
 
-1. Live SSE instead of polling  
-2. Sketches / voice
+1. Shared Board tab  
+2. Live SSE instead of polling  

@@ -12,8 +12,8 @@ android {
         applicationId = "in.microbear.mychat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -58,5 +58,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }

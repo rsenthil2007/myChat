@@ -1,10 +1,14 @@
 package io.microbear.mychat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,8 +25,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -31,12 +43,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import io.microbear.mychat.data.ChatMessage
 
 private val Slate = Color(0xFF0F172A)
@@ -48,6 +64,11 @@ private val Danger = Color(0xFFF87171)
 
 class MainActivity : ComponentActivity() {
     private val vm: ChatViewModel by viewModels()
+    private val micPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) vm.startRecording() else vm.onMicDenied()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,9 +85,46 @@ class MainActivity : ComponentActivity() {
                 ),
             ) {
                 val state = vm.ui
-                if (state.joined) ChatScreen(state, vm) else JoinScreen(state, vm)
+                when {
+                    !state.joined -> JoinScreen(state, vm)
+                    state.sketching -> SketchScreen(
+                        busy = state.busy,
+                        onCancel = vm::closeSketch,
+                        onSend = vm::sendSketch,
+                    )
+                    else -> ChatScreen(
+                        state = state,
+                        vm = vm,
+                        onMic = { onMicTap(state) },
+                    )
+                }
+                if (state.confirmClear) {
+                    AlertDialog(
+                        onDismissRequest = vm::dismissClear,
+                        title = { Text("Clear chat") },
+                        text = {
+                            Text("Clear all messages in room \"${state.roomId}\" for everyone? This cannot be undone.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = vm::clearRoom) { Text("Clear", color = Danger) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = vm::dismissClear) { Text("Cancel", color = Mute) }
+                        },
+                    )
+                }
             }
         }
+    }
+
+    private fun onMicTap(state: ChatUiState) {
+        if (state.recording) {
+            vm.stopRecording(send = true)
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) vm.startRecording() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 }
 
@@ -93,7 +151,7 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         Text("Join a room", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "v0.2 text, sealed with the room code like the web app. Emulator default is the PC server at 10.0.2.2:8080.",
+            "v0.3 chat: sealed text, sketches, and voice notes. Same rooms as the web app.",
             color = Mute,
             fontSize = 13.sp,
         )
@@ -141,7 +199,7 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
 }
 
 @Composable
-private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
+private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit) {
     val listState = rememberLazyListState()
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) {
@@ -158,18 +216,29 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Panel)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text("myChat", color = Teal, fontSize = 12.sp)
                 Text(state.roomId, color = Mist, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 Text(state.status, color = Mute, fontSize = 12.sp)
+            }
+            IconButton(onClick = vm::askClear, enabled = !state.busy) {
+                Icon(Icons.Filled.Delete, contentDescription = "Clear chat", tint = Mute)
             }
             TextButton(onClick = vm::leave) { Text("Leave", color = Teal) }
         }
         state.error?.let {
             Text(it, color = Danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+        }
+        if (state.recording) {
+            Text(
+                "Recording… tap the mic to send (max 60s)",
+                color = Danger,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
         }
         LazyColumn(
             state = listState,
@@ -178,16 +247,28 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(state.messages, key = { it.id }) { msg ->
-                MessageBubble(msg, mine = msg.authorId == state.authorId)
+                MessageBubble(msg, mine = msg.authorId == state.authorId, playing = state.playingId == msg.id) {
+                    vm.toggleAudio(msg)
+                }
             }
         }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Panel)
-                .padding(10.dp),
+                .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = vm::openSketch, enabled = !state.busy && !state.recording) {
+                Icon(Icons.Filled.Brush, contentDescription = "Sketch", tint = Teal)
+            }
+            IconButton(onClick = onMic, enabled = !state.busy) {
+                Icon(
+                    if (state.recording) Icons.Filled.Stop else Icons.Filled.Mic,
+                    contentDescription = if (state.recording) "Send voice note" else "Record voice note",
+                    tint = if (state.recording) Danger else Teal,
+                )
+            }
             OutlinedTextField(
                 value = state.draft,
                 onValueChange = vm::onDraft,
@@ -203,7 +284,7 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
             )
             Button(
                 onClick = vm::send,
-                enabled = !state.busy && state.draft.isNotBlank(),
+                enabled = !state.busy && state.draft.isNotBlank() && !state.recording,
                 modifier = Modifier.padding(start = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
             ) { Text("Send") }
@@ -212,26 +293,60 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel) {
 }
 
 @Composable
-private fun MessageBubble(msg: ChatMessage, mine: Boolean) {
-    val body = msg.displayText.ifBlank {
-        when {
-            msg.type == "drawing" -> "[sketch]"
-            msg.type == "audio" -> "[voice note]"
-            else -> msg.text.orEmpty().ifBlank { "[empty]" }
-        }
-    }
+private fun MessageBubble(
+    msg: ChatMessage,
+    mine: Boolean,
+    playing: Boolean,
+    onPlayAudio: () -> Unit,
+) {
+    val png = msg.sketchPng
+    val audio = msg.audioBytes
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
     ) {
         Text(msg.authorName, color = Mute, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 4.dp))
-        Text(
-            body,
-            color = if (mine) Slate else Mist,
-            modifier = Modifier
-                .widthIn(max = 320.dp)
-                .background(if (mine) Teal else Panel, RoundedCornerShape(14.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        when {
+            png != null -> {
+                val bmp = remember(png) { DrawingRaster.decodeBitmap(png) }
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Sketch from ${msg.authorName}",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .widthIn(max = 280.dp)
+                            .background(Color.White, RoundedCornerShape(14.dp))
+                            .padding(4.dp),
+                    )
+                } else {
+                    BubbleText(msg.displayText.ifBlank { "(empty drawing)" }, mine)
+                }
+            }
+            audio != null -> {
+                Button(
+                    onClick = onPlayAudio,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (mine) Teal else Panel,
+                        contentColor = if (mine) Slate else Mist,
+                    ),
+                ) {
+                    Text(if (playing) "Stop voice note" else "Play voice note")
+                }
+            }
+            else -> BubbleText(msg.displayText.ifBlank { "[empty]" }, mine)
+        }
     }
+}
+
+@Composable
+private fun BubbleText(body: String, mine: Boolean) {
+    Text(
+        body,
+        color = if (mine) Slate else Mist,
+        modifier = Modifier
+            .widthIn(max = 320.dp)
+            .background(if (mine) Teal else Panel, RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }

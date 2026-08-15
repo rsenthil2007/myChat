@@ -31,11 +31,14 @@ data class ChatMessage(
     val data: String? = null,
     @SerializedName("imageData") val imageData: String? = null,
     @field:Transient val displayText: String = "",
+    @field:Transient val sketchPng: ByteArray? = null,
+    @field:Transient val audioBytes: ByteArray? = null,
+    @field:Transient val audioMime: String? = null,
 )
 
-data class OutgoingSecureText(
+data class OutgoingSecure(
     val id: String,
-    val type: String = "text",
+    val type: String,
     val authorId: String,
     val authorName: String,
     val createdAt: String,
@@ -45,4 +48,23 @@ data class OutgoingSecureText(
     val iv: String,
     val mac: String,
     val data: String,
+)
+
+fun SecurePipe.Envelope.toOutgoing(
+    type: String,
+    authorId: String,
+    authorName: String,
+    createdAt: String,
+    id: String = "m_${System.currentTimeMillis().toString(36)}_${java.util.UUID.randomUUID().toString().take(6)}",
+): OutgoingSecure = OutgoingSecure(
+    id = id,
+    type = type,
+    authorId = authorId,
+    authorName = authorName,
+    createdAt = createdAt,
+    v = v,
+    zip = zip,
+    iv = iv,
+    mac = mac,
+    data = data,
 )

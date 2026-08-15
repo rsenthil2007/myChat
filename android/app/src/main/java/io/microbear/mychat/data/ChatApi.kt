@@ -13,8 +13,8 @@ class ChatApi(
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     fun health(baseUrl: String): HealthResponse {
@@ -35,7 +35,7 @@ class ChatApi(
         }
     }
 
-    fun sendSecureText(baseUrl: String, roomId: String, message: OutgoingSecureText): RoomSnapshot {
+    fun sendSecure(baseUrl: String, roomId: String, message: OutgoingSecure): RoomSnapshot {
         val payload = gson.toJson(message).toRequestBody(jsonType)
         val req = Request.Builder()
             .url(join(baseUrl, "/api/rooms/$roomId/messages"))
@@ -43,6 +43,18 @@ class ChatApi(
             .build()
         client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) error("Send ${res.code}: ${res.body?.string()}")
+            val body = res.body?.string().orEmpty()
+            return gson.fromJson(body, RoomSnapshot::class.java)
+        }
+    }
+
+    fun clearRoom(baseUrl: String, roomId: String): RoomSnapshot {
+        val req = Request.Builder()
+            .url(join(baseUrl, "/api/rooms/$roomId/messages"))
+            .delete()
+            .build()
+        client.newCall(req).execute().use { res ->
+            if (!res.isSuccessful) error("Clear ${res.code}: ${res.body?.string()}")
             val body = res.body?.string().orEmpty()
             return gson.fromJson(body, RoomSnapshot::class.java)
         }

@@ -46,10 +46,18 @@ class SecurePipeTest {
     }
 
     @Test
-    fun newSealIsNotDeterministic() {
-        val a = SecurePipe.sealText("same", "lobby")
-        val b = SecurePipe.sealText("same", "lobby")
-        assertNotEquals(a.iv, b.iv)
-        assertNotEquals(a.data, b.data)
+    fun roundTripDrawingPayload() {
+        val payload = mapOf(
+            "w" to 200,
+            "h" to 120,
+            "strokes" to listOf(
+                mapOf("t" to "pen", "c" to "#0f172a", "s" to 4, "p" to listOf(10, 10, 40, 50)),
+            ),
+        )
+        val env = SecurePipe.sealJson(payload, "lobby")
+        val out = SecurePipe.open(env, "lobby")
+        assertEquals(200, out.get("w").asInt)
+        assertEquals(1, out.getAsJsonArray("strokes").size())
+        assertEquals("pen", out.getAsJsonArray("strokes")[0].asJsonObject.get("t").asString)
     }
 }

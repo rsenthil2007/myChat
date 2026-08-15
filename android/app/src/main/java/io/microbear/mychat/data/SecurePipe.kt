@@ -35,8 +35,10 @@ object SecurePipe {
 
     private data class Keys(val encKey: ByteArray, val macKey: ByteArray)
 
-    fun sealText(text: String, roomId: String): Envelope {
-        val raw = gson.toJson(mapOf("text" to text)).toByteArray(utf8)
+    fun sealText(text: String, roomId: String): Envelope = sealJson(mapOf("text" to text), roomId)
+
+    fun sealJson(payload: Any, roomId: String): Envelope {
+        val raw = gson.toJson(payload).toByteArray(utf8)
         val packed = compress(raw)
         val iv = ByteArray(16).also { random.nextBytes(it) }
         val keys = deriveKeys(roomId)
