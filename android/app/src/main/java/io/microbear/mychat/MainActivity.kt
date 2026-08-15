@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -142,8 +142,8 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(Slate)
-            .padding(24.dp)
-            .imePadding(),
+            .safeDrawingPadding()
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text("myChat", color = Teal, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -210,7 +210,7 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
         modifier = Modifier
             .fillMaxSize()
             .background(Slate)
-            .imePadding(),
+            .safeDrawingPadding(),
     ) {
         Row(
             modifier = Modifier
