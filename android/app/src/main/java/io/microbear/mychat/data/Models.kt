@@ -14,6 +14,44 @@ data class RoomSnapshot(
     val roomId: String = "",
     val updatedAt: String = "",
     val messages: List<ChatMessage> = emptyList(),
+    val whiteboard: WhiteboardState? = null,
+)
+
+data class WhiteboardState(
+    val w: Int = 0,
+    val h: Int = 0,
+    val layers: List<BoardLayer> = emptyList(),
+    val palette: List<BoardSwatch> = emptyList(),
+    val updatedAt: String = "",
+)
+
+data class BoardLayer(
+    val authorId: String = "",
+    val authorName: String = "",
+    val assignedColor: String = "",
+    val extraColors: List<String> = emptyList(),
+    val strokes: List<BoardStrokeDto> = emptyList(),
+    val updatedAt: String = "",
+)
+
+data class BoardStrokeDto(
+    val t: String = "pen",
+    val c: String = "#0f172a",
+    val s: Float = 4f,
+    val p: List<Float> = emptyList(),
+    val tx: String? = null,
+)
+
+data class BoardSwatch(
+    val id: String = "",
+    val name: String = "",
+    val hex: String = "",
+)
+
+data class WhiteboardActionResponse(
+    val room: RoomSnapshot? = null,
+    val whiteboard: WhiteboardState? = null,
+    val error: String? = null,
 )
 
 data class ChatMessage(

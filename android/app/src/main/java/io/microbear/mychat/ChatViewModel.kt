@@ -17,6 +17,7 @@ import com.google.gson.JsonObject
 import io.microbear.mychat.data.ChatApi
 import io.microbear.mychat.data.ChatMessage
 import io.microbear.mychat.data.SecurePipe
+import io.microbear.mychat.data.WhiteboardState
 import io.microbear.mychat.data.toEnvelope
 import io.microbear.mychat.data.toOutgoing
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +31,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 
-const val DEFAULT_SERVER = "http://10.0.2.2:8080"
+const val DEFAULT_SERVER = "https://chat.microbear.in"
 
 data class SketchStroke(
     val color: String,
@@ -54,12 +55,25 @@ data class ChatUiState(
     val recording: Boolean = false,
     val confirmClear: Boolean = false,
     val playingId: String? = null,
+    val roomTab: String = "chat",
+    val board: WhiteboardState = WhiteboardState(),
+    val boardJoined: Boolean = false,
+    val boardColor: String = "#0f172a",
+    val boardPenSize: Float = 4f,
+    val boardTool: String = "pen",
+    val boardMineStrokes: List<BoardStroke> = emptyList(),
+    val boardCanvasW: Int = 0,
+    val boardCanvasH: Int = 0,
+    val boardDragging: Boolean = false,
+    val confirmClearBoard: Boolean = false,
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("mychat", Context.MODE_PRIVATE)
     private val api = ChatApi()
     private var pollJob: Job? = null
+    private var boardSyncJob: Job? = null
+    private var lastBoardStamp = ""
     private val openedCache = java.util.concurrent.ConcurrentHashMap<String, ChatMessage>()
     private var recorder: MediaRecorder? = null
     private var recordFile: File? = null
@@ -110,9 +124,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val health = withContext(Dispatchers.IO) { api.health(server) }
                 if (!health.ok) error("Server is not ready")
-                val (opened, count) = withContext(Dispatchers.IO) {
+                val (opened, count, board) = withContext(Dispatchers.IO) {
                     val snap = api.loadRoom(server, room)
-                    reveal(snap.messages, room) to snap.messages.size
+                    Triple(reveal(snap.messages, room), snap.messages.size, snap.whiteboard)
                 }
                 ui = ui.copy(
                     busy = false,
@@ -122,7 +136,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     serverUrl = server,
                     messages = opened,
                     status = "Synced · $count messages",
+                    roomTab = "chat",
                 )
+                applyWhiteboard(board, force = true)
                 startPolling()
             } catch (e: Exception) {
                 ui = ui.copy(
@@ -140,6 +156,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         cancelRecording()
         pollJob?.cancel()
         pollJob = null
+        boardSyncJob?.cancel()
+        boardSyncJob = null
+        lastBoardStamp = ""
         openedCache.clear()
         SecurePipe.clearKeyCache()
         ui = ui.copy(
@@ -150,6 +169,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             sketching = false,
             recording = false,
             confirmClear = false,
+            roomTab = "chat",
+            board = WhiteboardState(),
+            boardJoined = false,
+            boardMineStrokes = emptyList(),
+            boardDragging = false,
+            confirmClearBoard = false,
         )
     }
 
@@ -157,6 +182,149 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun closeSketch() { ui = ui.copy(sketching = false) }
     fun askClear() { ui = ui.copy(confirmClear = true) }
     fun dismissClear() { ui = ui.copy(confirmClear = false) }
+    fun showChatTab() { ui = ui.copy(roomTab = "chat") }
+    fun showBoardTab() {
+        ui = ui.copy(roomTab = "board", error = null)
+        if (!ui.boardJoined) joinBoard()
+    }
+    fun onBoardPenSize(value: Float) { ui = ui.copy(boardPenSize = value) }
+    fun onBoardTool(value: String) { ui = ui.copy(boardTool = value) }
+    fun onBoardCanvasSize(w: Int, h: Int) {
+        if (w != ui.boardCanvasW || h != ui.boardCanvasH) {
+            ui = ui.copy(boardCanvasW = w, boardCanvasH = h)
+        }
+    }
+    fun setBoardDragging(value: Boolean) { ui = ui.copy(boardDragging = value) }
+    fun askClearBoard() { ui = ui.copy(confirmClearBoard = true) }
+    fun dismissClearBoard() { ui = ui.copy(confirmClearBoard = false) }
+
+    fun joinBoard() {
+        if (!ui.joined) return
+        val server = ui.serverUrl
+        val roomId = ui.roomId
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.whiteboardAction(server, roomId, "join", authorBody())
+                }
+                ui = ui.copy(boardJoined = true)
+                applyWhiteboard(res.whiteboard, force = true)
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not join the board")
+            }
+        }
+    }
+
+    fun addBoardStroke(stroke: BoardStroke) {
+        ui = ui.copy(boardMineStrokes = ui.boardMineStrokes + stroke, boardDragging = false)
+        queueBoardSync()
+    }
+
+    fun undoBoard() {
+        if (ui.boardMineStrokes.isEmpty()) return
+        ui = ui.copy(boardMineStrokes = ui.boardMineStrokes.dropLast(1))
+        val server = ui.serverUrl
+        val roomId = ui.roomId
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.whiteboardAction(server, roomId, "undo", authorBody())
+                }
+                ui = ui.copy(boardJoined = true)
+                applyWhiteboard(res.whiteboard, force = true)
+            } catch (_: Exception) {
+                queueBoardSync(immediate = true)
+            }
+        }
+    }
+
+    fun clearBoardMine() {
+        ui = ui.copy(boardMineStrokes = emptyList())
+        val server = ui.serverUrl
+        val roomId = ui.roomId
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.whiteboardAction(server, roomId, "clear-mine", authorBody())
+                }
+                applyWhiteboard(res.whiteboard, force = true)
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not clear your layer")
+            }
+        }
+    }
+
+    fun clearBoardAll() {
+        ui = ui.copy(confirmClearBoard = false, boardMineStrokes = emptyList(), boardJoined = false)
+        val server = ui.serverUrl
+        val roomId = ui.roomId
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.whiteboardAction(server, roomId, "clear-all", authorBody())
+                }
+                applyWhiteboard(res.whiteboard, force = true)
+                joinBoard()
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not clear the board")
+            }
+        }
+    }
+
+    private fun authorBody(): Map<String, Any?> = mapOf(
+        "authorId" to ui.authorId,
+        "authorName" to ui.displayName,
+    )
+
+    private fun queueBoardSync(immediate: Boolean = false) {
+        boardSyncJob?.cancel()
+        boardSyncJob = viewModelScope.launch {
+            if (!immediate) delay(220)
+            val w = ui.boardCanvasW
+            val h = ui.boardCanvasH
+            if (w < 8 || h < 8) return@launch
+            val server = ui.serverUrl
+            val roomId = ui.roomId
+            val drawing = mapOf(
+                "w" to w,
+                "h" to h,
+                "strokes" to ui.boardMineStrokes.map { it.toPayload() },
+            )
+            val body = authorBody().toMutableMap()
+            body["drawing"] = drawing
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.whiteboardAction(server, roomId, "stroke", body)
+                }
+                ui = ui.copy(boardJoined = true)
+                applyWhiteboard(res.whiteboard, force = true)
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not sync the board")
+            }
+        }
+    }
+
+    private fun applyWhiteboard(board: WhiteboardState?, force: Boolean = false) {
+        if (board == null) return
+        val stamp = board.updatedAt + ":" + board.layers.joinToString("|") {
+            "${it.authorId}:${it.strokes.size}:${it.assignedColor}:${it.updatedAt}"
+        }
+        if (!force && stamp == lastBoardStamp) return
+        if (ui.boardDragging && !force) return
+        lastBoardStamp = stamp
+        val mine = board.layers.find { it.authorId == ui.authorId }
+        val nextMine = if (force && !ui.boardDragging) {
+            mine?.strokes?.map { it.toStroke() } ?: emptyList()
+        } else {
+            ui.boardMineStrokes
+        }
+        ui = ui.copy(
+            board = board,
+            boardJoined = ui.boardJoined || mine != null,
+            boardColor = mine?.assignedColor?.ifBlank { ui.boardColor } ?: ui.boardColor,
+            boardMineStrokes = nextMine,
+        )
+    }
 
     fun onMicDenied() {
         ui = ui.copy(error = "Microphone permission is required for voice notes.")
@@ -319,15 +487,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             while (isActive && ui.joined) {
                 delay(2000)
                 try {
-                    val (opened, count) = withContext(Dispatchers.IO) {
+                    val (opened, count, board) = withContext(Dispatchers.IO) {
                         val snap = api.loadRoom(ui.serverUrl, ui.roomId)
-                        reveal(snap.messages, ui.roomId) to snap.messages.size
+                        Triple(reveal(snap.messages, ui.roomId), snap.messages.size, snap.whiteboard)
                     }
                     ui = ui.copy(
                         messages = opened,
                         status = "Synced · $count messages",
                         error = if (ui.recording) ui.error else null,
                     )
+                    applyWhiteboard(board)
                 } catch (e: Exception) {
                     ui = ui.copy(status = "Reconnecting…", error = e.message)
                 }

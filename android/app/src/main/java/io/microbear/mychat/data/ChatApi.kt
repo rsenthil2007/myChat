@@ -60,6 +60,25 @@ class ChatApi(
         }
     }
 
+    fun whiteboardAction(
+        baseUrl: String,
+        roomId: String,
+        action: String,
+        body: Map<String, Any?>,
+    ): WhiteboardActionResponse {
+        val payload = gson.toJson(body).toRequestBody(jsonType)
+        val req = Request.Builder()
+            .url(join(baseUrl, "/api/rooms/$roomId/whiteboard/$action"))
+            .post(payload)
+            .build()
+        client.newCall(req).execute().use { res ->
+            val text = res.body?.string().orEmpty()
+            val parsed = runCatching { gson.fromJson(text, WhiteboardActionResponse::class.java) }.getOrNull()
+            if (!res.isSuccessful) error(parsed?.error ?: "Board ${res.code}: $text")
+            return parsed ?: error("Empty board response")
+        }
+    }
+
     private fun join(baseUrl: String, path: String): String {
         val base = baseUrl.trim().trimEnd('/')
         return base + path

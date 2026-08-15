@@ -118,6 +118,21 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
+                if (state.confirmClearBoard) {
+                    AlertDialog(
+                        onDismissRequest = vm::dismissClearBoard,
+                        title = { Text("Clear board") },
+                        text = {
+                            Text("Clear the entire whiteboard for everyone? This removes all layers and color claims.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = vm::clearBoardAll) { Text("Clear all", color = Danger) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = vm::dismissClearBoard) { Text("Cancel", color = Mute) }
+                        },
+                    )
+                }
             }
         }
     }
@@ -169,7 +184,7 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         Text("Join a room", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Sealed text, sketches, and voice notes. Same rooms as the web app.",
+            "Sealed text, sketches, voice notes, and a shared board. Same rooms as the web app.",
             color = Mute,
             fontSize = 13.sp,
         )
@@ -248,9 +263,25 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
             }
             TextButton(onClick = vm::leave) { Text("Leave", color = Teal) }
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Panel)
+                .padding(horizontal = 8.dp),
+        ) {
+            TextButton(onClick = vm::showChatTab) {
+                Text("Chat", color = if (state.roomTab == "chat") Teal else Mute, fontWeight = FontWeight.SemiBold)
+            }
+            TextButton(onClick = vm::showBoardTab) {
+                Text("Board", color = if (state.roomTab == "board") Teal else Mute, fontWeight = FontWeight.SemiBold)
+            }
+        }
         state.error?.let {
             Text(it, color = Danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
         }
+        if (state.roomTab == "board") {
+            BoardScreen(state, vm, Modifier.weight(1f).fillMaxWidth())
+        } else {
         if (state.recording) {
             Text(
                 "Recording… tap the mic to send (max 60s)",
@@ -307,6 +338,7 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
                 modifier = Modifier.padding(start = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
             ) { Text("Send") }
+        }
         }
     }
 }
