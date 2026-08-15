@@ -267,14 +267,25 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Panel)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(onClick = vm::showChatTab) {
-                Text("Chat", color = if (state.roomTab == "chat") Teal else Mute, fontWeight = FontWeight.SemiBold)
-            }
-            TextButton(onClick = vm::showBoardTab) {
-                Text("Board", color = if (state.roomTab == "board") Teal else Mute, fontWeight = FontWeight.SemiBold)
-            }
+            Button(
+                onClick = vm::showChatTab,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (state.roomTab == "chat") Teal else Color(0xFF334155),
+                    contentColor = if (state.roomTab == "chat") Slate else Mist,
+                ),
+            ) { Text("Chat") }
+            Button(
+                onClick = vm::showBoardTab,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (state.roomTab == "board") Teal else Color(0xFF334155),
+                    contentColor = if (state.roomTab == "board") Slate else Mist,
+                ),
+            ) { Text("Board") }
         }
         state.error?.let {
             Text(it, color = Danger, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
