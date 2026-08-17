@@ -136,23 +136,40 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                         detectDragGestures(
                             onDragStart = { offset ->
                                 vm.setBoardDragging(true)
-                                val x = quantizeBoard(toLogicalX(offset.x, size.width.toFloat(), logicalW))
-                                val y = quantizeBoard(toLogicalY(offset.y, size.height.toFloat(), logicalH))
-                                current = listOf(x, y)
+                                val x = toLogicalX(offset.x, size.width.toFloat(), logicalW)
+                                val y = toLogicalY(offset.y, size.height.toFloat(), logicalH)
+                                current = appendBoardPoint(emptyList(), x, y)
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                val x = quantizeBoard(toLogicalX(change.position.x, size.width.toFloat(), logicalW))
-                                val y = quantizeBoard(toLogicalY(change.position.y, size.height.toFloat(), logicalH))
-                                current = current + listOf(x, y)
+                                val viewW = size.width.toFloat()
+                                val viewH = size.height.toFloat()
+                                var next = current
+                                change.historical.forEach { sample ->
+                                    next = appendBoardPoint(
+                                        next,
+                                        toLogicalX(sample.position.x, viewW, logicalW),
+                                        toLogicalY(sample.position.y, viewH, logicalH),
+                                    )
+                                }
+                                current = appendBoardPoint(
+                                    next,
+                                    toLogicalX(change.position.x, viewW, logicalW),
+                                    toLogicalY(change.position.y, viewH, logicalH),
+                                )
                             },
                             onDragEnd = {
+                                val logicalSize = toLogicalPenSize(
+                                    state.boardPenSize,
+                                    size.width.toFloat(),
+                                    logicalW,
+                                )
                                 if (current.size >= 2) {
                                     vm.addBoardStroke(
                                         BoardStroke(
                                             type = state.boardTool,
                                             color = state.boardColor,
-                                            size = state.boardPenSize,
+                                            size = logicalSize,
                                             points = current,
                                         ),
                                     )
@@ -182,8 +199,13 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                     }
                     paintBoardStrokes(state.boardMineStrokes, logicalW, logicalH)
                     if (current.size >= 2) {
+                        val liveSize = toLogicalPenSize(
+                            state.boardPenSize,
+                            size.width,
+                            logicalW,
+                        )
                         paintBoardStroke(
-                            BoardStroke(state.boardTool, state.boardColor, state.boardPenSize, current),
+                            BoardStroke(state.boardTool, state.boardColor, liveSize, current),
                             size.width / logicalW,
                             size.height / logicalH,
                         )

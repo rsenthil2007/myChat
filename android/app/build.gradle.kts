@@ -12,8 +12,8 @@ android {
         applicationId = "in.microbear.mychat"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.4.4"
+        versionCode = 11
+        versionName = "0.4.5"
         resValue("string", "app_name", "myChat $versionName")
         vectorDrawables.useSupportLibrary = true
     }

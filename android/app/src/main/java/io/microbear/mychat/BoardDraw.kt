@@ -36,7 +36,7 @@ fun io.microbear.mychat.data.BoardStrokeDto.toStroke(): BoardStroke = BoardStrok
 fun BoardStroke.toPayload(): Map<String, Any?> = buildMap {
     put("t", type)
     put("c", color)
-    put("s", size)
+    put("s", size.toDouble())
     put("p", points)
     if (type == "text" && text.isNotBlank()) put("tx", text)
 }
@@ -62,7 +62,7 @@ fun DrawScope.paintBoardStrokes(
 fun DrawScope.paintBoardStroke(stroke: BoardStroke, sx: Float = 1f, sy: Float = 1f) {
     val pts = stroke.points
     val col = parseHexColor(stroke.color)
-    val sz = stroke.size * min(sx, sy)
+    val sz = max(1.5f, stroke.size * min(sx, sy))
     if (stroke.type == "text") {
         if (stroke.text.isBlank() || pts.size < 2) return
         val x = pts[0] * sx
@@ -154,16 +154,12 @@ fun DrawScope.paintBoardStroke(stroke: BoardStroke, sx: Float = 1f, sy: Float = 
         drawCircle(col, strokeStyle.width / 2f, Offset(pts[0] * sx, pts[1] * sy), blendMode = blend)
         return
     }
-    var i = 0
-    while (i + 3 < pts.size) {
-        drawLine(
-            color = col,
-            start = Offset(pts[i] * sx, pts[i + 1] * sy),
-            end = Offset(pts[i + 2] * sx, pts[i + 3] * sy),
-            strokeWidth = strokeStyle.width,
-            cap = StrokeCap.Round,
-            blendMode = blend,
-        )
+    val path = Path()
+    path.moveTo(pts[0] * sx, pts[1] * sy)
+    var i = 2
+    while (i + 1 < pts.size) {
+        path.lineTo(pts[i] * sx, pts[i + 1] * sy)
         i += 2
     }
+    drawPath(path, col, style = strokeStyle, blendMode = blend)
 }

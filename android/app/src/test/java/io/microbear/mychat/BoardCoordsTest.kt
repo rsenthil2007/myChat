@@ -31,4 +31,19 @@ class BoardCoordsTest {
         assertEquals(900, w)
         assertEquals(500, h)
     }
+
+    @Test
+    fun toLogicalPenSizeMapsViewPixelsOntoTheBoard() {
+        val logical = toLogicalPenSize(5f, 320f, 1280)
+        assertEquals(20f, logical, 0.01f)
+    }
+
+    @Test
+    fun appendBoardPointFillsLargeGaps() {
+        val start = listOf(0f, 0f)
+        val filled = appendBoardPoint(start, 10f, 0f, spacing = 3f)
+        assertEquals(true, filled.size >= 6)
+        assertEquals(10f, filled[filled.lastIndex - 1], 0.01f)
+        assertEquals(0f, filled.last(), 0.01f)
+    }
 }
