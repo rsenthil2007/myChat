@@ -4,7 +4,7 @@ import io.microbear.mychat.data.WhiteboardState
 
 /** Shared logical board size — matches server `whiteboard.CANONICAL_*`. */
 const val BOARD_LOGICAL_W = 1280
-const val BOARD_LOGICAL_H = 720
+const val BOARD_LOGICAL_H = 1600
 
 fun boardLogicalSize(board: WhiteboardState): Pair<Int, Int> {
     val w = if (board.w > 0) board.w else BOARD_LOGICAL_W

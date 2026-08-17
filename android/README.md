@@ -1,9 +1,9 @@
-# Native myChat (Kotlin) — v0.4.2
+# Native myChat (Kotlin) — v0.4.3
 
 Android client for the same `server.py` rooms as the web app.
 
 **In this version:** sealed **text**, **sketches**, **voice notes**, **clear chat**, and a shared **Board** tab.  
-The board uses a fixed **1280×720** logical canvas on every device (phone, laptop, APK), so strokes line up.
+The board uses a fixed **1280×1600** (4:5) logical canvas on every device (phone, laptop, APK), so strokes line up and the phone board can use most of the remaining height.
 
 **Not yet:** Pictionary (hidden on the web too), live SSE (the app still polls every 2s).
 
@@ -18,7 +18,7 @@ The older WebInto wrap notes stay in `Wrap/`.
 
 Use the **same room code** as the browser. Chat and board share that room.
 
-If an old room’s board looks stretched after upgrading, use **Clear all** once so it adopts the shared 1280×720 size. Redeploy `server.py` / `whiteboard.py` on the VPS so the server stops rewriting board size from each device.
+Redeploy `server.py` / `whiteboard.py` on the VPS so rooms pick up **1280×1600**. Existing 16:9 doodles stay in the top band (no remapping); extra space is below. Use **Clear all** only if an old room still looks stretched.
 
 ## GitHub debug APK
 

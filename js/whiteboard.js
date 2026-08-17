@@ -27,7 +27,7 @@ const Whiteboard = (() => {
   ];
 
   const CANONICAL_W = 1280;
-  const CANONICAL_H = 720;
+  const CANONICAL_H = 1600;
   const NEAR = 48;
   const els = {};
 

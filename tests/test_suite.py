@@ -620,6 +620,18 @@ class WhiteboardTest(unittest.TestCase):
         self.assertEqual(room["whiteboard"]["w"], wb.CANONICAL_W)
         self.assertEqual(room["whiteboard"]["h"], wb.CANONICAL_H)
 
+    def test_board_upgrades_old_16x9_size(self):
+        room = {
+            "whiteboard": {"w": 1280, "h": 720, "layers": []},
+            "messages": [],
+        }
+        room = wb.join_board(room, "u1", "Alice")
+        self.assertEqual(room["whiteboard"]["w"], wb.CANONICAL_W)
+        self.assertEqual(room["whiteboard"]["h"], wb.CANONICAL_H)
+        public = wb.public_whiteboard({"w": 1280, "h": 720, "layers": []})
+        self.assertEqual(public["w"], wb.CANONICAL_W)
+        self.assertEqual(public["h"], wb.CANONICAL_H)
+
     def test_layers_are_per_author(self):
         room = wb.join_board(self.room, "u1", "Alice")
         alice = room["whiteboard"]["layers"][0]["assignedColor"]

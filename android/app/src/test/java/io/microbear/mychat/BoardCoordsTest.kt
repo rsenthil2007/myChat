@@ -7,13 +7,13 @@ class BoardCoordsTest {
     @Test
     fun logicalMappingIsSymmetric() {
         val logicalW = 1280
-        val logicalH = 720
+        val logicalH = 1600
         val viewW = 640f
-        val viewH = 360f
+        val viewH = 800f
         val lx = toLogicalX(320f, viewW, logicalW)
-        val ly = toLogicalY(180f, viewH, logicalH)
+        val ly = toLogicalY(400f, viewH, logicalH)
         assertEquals(640f, lx, 0.01f)
-        assertEquals(360f, ly, 0.01f)
+        assertEquals(800f, ly, 0.01f)
     }
 
     @Test

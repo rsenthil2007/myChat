@@ -351,7 +351,7 @@ const CanvasDraw = (() => {
 
     function setLogicalSize(w, h) {
       const nextW = Math.max(1, Number(w) || logicalW || 1280);
-      const nextH = Math.max(1, Number(h) || logicalH || 720);
+      const nextH = Math.max(1, Number(h) || logicalH || 1600);
       if (nextW === logicalW && nextH === logicalH) return;
       logicalW = nextW;
       logicalH = nextH;

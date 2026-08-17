@@ -12,8 +12,9 @@ COLOR_NEAR_THRESHOLD = 48
 
 # Fixed logical canvas for every client (phone, laptop, APK). Stroke coords are
 # always in this space; UIs letterbox/contain to fit their local view.
+# 4:5 (1280×1600) is tall enough to fill a portrait phone without stretching.
 CANONICAL_W = 1280
-CANONICAL_H = 720
+CANONICAL_H = 1600
 
 # Fixed room palette — assigned one-per-member on join; also offered as swatches
 PALETTE = [
@@ -50,11 +51,9 @@ def empty_whiteboard() -> dict:
 
 def public_whiteboard(board: dict | None) -> dict:
     data = board or empty_whiteboard()
-    w = int(data.get("w") or 0) or CANONICAL_W
-    h = int(data.get("h") or 0) or CANONICAL_H
     return {
-        "w": w,
-        "h": h,
+        "w": CANONICAL_W,
+        "h": CANONICAL_H,
         "layers": list(data.get("layers") or []),
         "palette": list(data.get("palette") or PALETTE),
         "updatedAt": data.get("updatedAt") or utc_now(),
@@ -63,10 +62,8 @@ def public_whiteboard(board: dict | None) -> dict:
 
 def ensure_board_size(board: dict) -> dict:
     """Keep a stable logical size; never follow a client's screen pixels."""
-    if not int(board.get("w") or 0):
-        board["w"] = CANONICAL_W
-    if not int(board.get("h") or 0):
-        board["h"] = CANONICAL_H
+    board["w"] = CANONICAL_W
+    board["h"] = CANONICAL_H
     return board
 
 

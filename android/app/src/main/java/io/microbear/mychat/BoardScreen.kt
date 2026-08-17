@@ -124,12 +124,12 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .aspectRatio(logicalW.toFloat() / logicalH.toFloat())
                     .background(Color.White)
                     .pointerInput(state.boardColor, state.boardPenSize, state.boardTool, logicalW, logicalH) {
