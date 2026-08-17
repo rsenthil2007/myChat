@@ -42,7 +42,17 @@ class ChatApi(
             .post(payload)
             .build()
         client.newCall(req).execute().use { res ->
-            if (!res.isSuccessful) error("Send ${res.code}: ${res.body?.string()}")
+            if (!res.isSuccessful) {
+                val text = res.body?.string().orEmpty()
+                val hint = when {
+                    res.code == 502 || res.code == 503 ->
+                        "Chat server could not send. Check InterServer is running, then retry."
+                    text.contains("<html", ignoreCase = true) ->
+                        "Chat server error (HTTP ${res.code})."
+                    else -> "Send ${res.code}: ${text.take(160)}"
+                }
+                error(hint)
+            }
             val body = res.body?.string().orEmpty()
             return gson.fromJson(body, RoomSnapshot::class.java)
         }

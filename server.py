@@ -123,8 +123,11 @@ def save_room(room: dict) -> dict:
         data["_picWord"] = room["_picWord"]
     path = room_path(rid)
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    tmp.replace(path)
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        raise OSError(f"Could not save room {rid}: {exc}") from exc
     return data
 
 
@@ -548,10 +551,19 @@ class Handler(SimpleHTTPRequestHandler):
             room["messages"].append(message)
             if len(room["messages"]) > 500:
                 room["messages"] = room["messages"][-500:]
-            room = save_room(room)
+            try:
+                room = save_room(room)
+            except OSError as exc:
+                print(f"save_room failed: {exc!r}")
+                self.write_json(500, {"error": str(exc)})
+                return
 
-        broadcast(room_id, room)
-        self.write_json(201, public_snapshot(room))
+        try:
+            broadcast(room_id, room)
+            self.write_json(201, public_snapshot(room))
+        except Exception as exc:  # noqa: BLE001
+            print(f"post message reply failed: {exc!r}")
+            self.write_json(500, {"error": "Could not send message"})
 
     def _read_json_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0") or "0")
