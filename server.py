@@ -689,6 +689,10 @@ class Handler(SimpleHTTPRequestHandler):
         except devices.DeviceAuthError as exc:
             self.write_json(exc.status, {"ok": False, "error": str(exc)})
             return
+        except Exception as exc:  # noqa: BLE001
+            print(f"device register failed: {exc!r}")
+            self.write_json(500, {"ok": False, "error": "Could not register this device. Try again."})
+            return
         self.write_json(200, result)
 
     def handle_device_verify(self) -> None:
@@ -699,6 +703,10 @@ class Handler(SimpleHTTPRequestHandler):
             result = devices.verify(str(payload.get("mobile") or ""), str(payload.get("ssaid") or ""))
         except devices.DeviceAuthError as exc:
             self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            print(f"device verify failed: {exc!r}")
+            self.write_json(500, {"ok": False, "error": "Could not verify this device. Try again."})
             return
         self.write_json(200, result)
 

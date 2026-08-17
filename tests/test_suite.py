@@ -122,6 +122,11 @@ class DeviceAccountsTest(unittest.TestCase):
             devices.verify("9876543210", "1122334455667788")
         self.assertEqual(ctx.exception.status, 403)
 
+    def test_non_hex_ssaid_is_hashed(self):
+        result = devices.register("9123456780", "not-a-hex-id")
+        self.assertTrue(result["ok"])
+        devices.verify("9123456780", "not-a-hex-id")
+
 
 class RoomFileIsolationTest(unittest.TestCase):
     def setUp(self):

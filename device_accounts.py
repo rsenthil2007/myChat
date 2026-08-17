@@ -52,10 +52,14 @@ def normalize_mobile(raw: str) -> str:
 
 
 def normalize_ssaid(raw: str) -> str:
-    value = re.sub(r"[^0-9a-fA-F]", "", raw or "").lower()
-    if not SSAID_RE.match(value):
+    raw = str(raw or "").strip()
+    if not raw:
         raise DeviceAuthError("Invalid device id")
-    return value
+    value = re.sub(r"[^0-9a-fA-F]", "", raw).lower()
+    if SSAID_RE.match(value):
+        return value
+    # Some phones return a non-hex ANDROID_ID; keep a stable 16-char bind key.
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def make_otp(mobile: str, ssaid: str) -> str:
@@ -98,6 +102,8 @@ def _supabase_request(method: str, path_query: str, body: dict | None = None) ->
     except urllib.error.HTTPError as exc:
         exc.read()
         raise DeviceAuthError(f"Could not reach account store ({exc.code})", 503) from exc
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        raise DeviceAuthError("Could not reach account store", 503) from exc
 
 
 def _supabase_get(mobile: str) -> dict | None:
@@ -124,10 +130,13 @@ def _file_load() -> dict:
 
 def _file_save(data: dict) -> None:
     path = DEVICES_PATH
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        raise DeviceAuthError("Could not save device registration", 500) from exc
 
 
 def _file_get(mobile: str) -> dict | None:

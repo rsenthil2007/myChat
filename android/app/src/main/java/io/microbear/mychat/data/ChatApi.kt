@@ -98,7 +98,17 @@ class ChatApi(
         client.newCall(req).execute().use { res ->
             val text = res.body?.string().orEmpty()
             val parsed = runCatching { gson.fromJson(text, DeviceAuthResponse::class.java) }.getOrNull()
-            if (!res.isSuccessful) error(parsed?.error ?: "Device ${res.code}: $text")
+            if (!res.isSuccessful) {
+                val hint = parsed?.error?.takeIf { it.isNotBlank() }
+                    ?: when {
+                        res.code == 502 || res.code == 503 ->
+                            "Chat server could not complete registration. Update InterServer and retry."
+                        text.contains("<html", ignoreCase = true) ->
+                            "Chat server error (HTTP ${res.code})."
+                        else -> "Device ${res.code}: ${text.take(160)}"
+                    }
+                error(hint)
+            }
             return parsed ?: error("Empty device response")
         }
     }
