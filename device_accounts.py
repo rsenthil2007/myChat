@@ -136,7 +136,7 @@ def _file_save(data: dict) -> None:
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(path)
     except OSError as exc:
-        raise DeviceAuthError("Could not save device registration", 500) from exc
+        raise DeviceAuthError(f"Could not save device registration ({exc})", 500) from exc
 
 
 def _file_get(mobile: str) -> dict | None:
