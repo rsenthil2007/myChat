@@ -602,6 +602,24 @@ class WhiteboardTest(unittest.TestCase):
         self.assertEqual(colors[1], wb.PALETTE[1]["hex"])
         self.assertEqual(colors[2], wb.PALETTE[2]["hex"])
 
+    def test_board_keeps_canonical_size(self):
+        room = {"whiteboard": wb.empty_whiteboard(), "messages": []}
+        room = wb.join_board(room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        self.assertEqual(room["whiteboard"]["w"], wb.CANONICAL_W)
+        self.assertEqual(room["whiteboard"]["h"], wb.CANONICAL_H)
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "s": 4, "p": [10, 20, 30, 40]}],
+            333,
+            222,
+        )
+        # Client screen pixels must not rewrite the shared logical canvas.
+        self.assertEqual(room["whiteboard"]["w"], wb.CANONICAL_W)
+        self.assertEqual(room["whiteboard"]["h"], wb.CANONICAL_H)
+
     def test_layers_are_per_author(self):
         room = wb.join_board(self.room, "u1", "Alice")
         alice = room["whiteboard"]["layers"][0]["assignedColor"]

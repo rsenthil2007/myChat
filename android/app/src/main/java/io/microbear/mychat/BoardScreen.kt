@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,8 +30,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -43,6 +45,7 @@ private val Danger = Color(0xFFF87171)
 @Composable
 fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modifier) {
     var current by remember { mutableStateOf<List<Float>>(emptyList()) }
+    val (logicalW, logicalH) = boardLogicalSize(state.board)
     val mine = state.board.layers.find { it.authorId == state.authorId }
     val colorName = state.board.palette.find {
         it.hex.equals(state.boardColor, ignoreCase = true)
@@ -51,7 +54,7 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
 
     Column(modifier.fillMaxSize()) {
         Text(
-            if (mine != null) "Your color: $colorName · Pen and eraser. Undo and Clear mine affect only you."
+            if (mine != null) "Your color: $colorName · Shared ${logicalW}×${logicalH} board"
             else "Open the board to claim a unique color.",
             color = Mute,
             fontSize = 12.sp,
@@ -87,6 +90,7 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -103,7 +107,7 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                 value = state.boardPenSize,
                 onValueChange = vm::onBoardPenSize,
                 valueRange = 2f..24f,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.size(120.dp),
                 colors = SliderDefaults.colors(thumbColor = Teal, activeTrackColor = Teal),
             )
             TextButton(
@@ -120,56 +124,70 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(12.dp)
-                .background(Color.White)
-                .onSizeChanged { vm.onBoardCanvasSize(it.width, it.height) }
-                .pointerInput(state.boardColor, state.boardPenSize, state.boardTool) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            vm.setBoardDragging(true)
-                            current = listOf(offset.x, offset.y)
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            current = current + listOf(change.position.x, change.position.y)
-                        },
-                        onDragEnd = {
-                            if (current.size >= 2) {
-                                vm.addBoardStroke(
-                                    BoardStroke(
-                                        type = state.boardTool,
-                                        color = state.boardColor,
-                                        size = state.boardPenSize,
-                                        points = current,
-                                    ),
-                                )
-                            } else {
-                                vm.setBoardDragging(false)
-                            }
-                            current = emptyList()
-                        },
-                        onDragCancel = {
-                            current = emptyList()
-                            vm.setBoardDragging(false)
-                        },
-                    )
-                },
+                .padding(12.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Canvas(Modifier.fillMaxSize()) {
-                others.forEach { layer ->
-                    paintBoardStrokes(
-                        layer.strokes.map { it.toStroke() },
-                        state.board.w,
-                        state.board.h,
-                    )
-                }
-                val srcW = if (state.board.w > 0) state.board.w else size.width.toInt()
-                val srcH = if (state.board.h > 0) state.board.h else size.height.toInt()
-                paintBoardStrokes(state.boardMineStrokes, srcW, srcH)
-                if (current.size >= 2) {
-                    paintBoardStroke(
-                        BoardStroke(state.boardTool, state.boardColor, state.boardPenSize, current),
-                    )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(logicalW.toFloat() / logicalH.toFloat())
+                    .background(Color.White)
+                    .pointerInput(state.boardColor, state.boardPenSize, state.boardTool, logicalW, logicalH) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                vm.setBoardDragging(true)
+                                val x = quantizeBoard(toLogicalX(offset.x, size.width.toFloat(), logicalW))
+                                val y = quantizeBoard(toLogicalY(offset.y, size.height.toFloat(), logicalH))
+                                current = listOf(x, y)
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val x = quantizeBoard(toLogicalX(change.position.x, size.width.toFloat(), logicalW))
+                                val y = quantizeBoard(toLogicalY(change.position.y, size.height.toFloat(), logicalH))
+                                current = current + listOf(x, y)
+                            },
+                            onDragEnd = {
+                                if (current.size >= 2) {
+                                    vm.addBoardStroke(
+                                        BoardStroke(
+                                            type = state.boardTool,
+                                            color = state.boardColor,
+                                            size = state.boardPenSize,
+                                            points = current,
+                                        ),
+                                    )
+                                } else {
+                                    vm.setBoardDragging(false)
+                                }
+                                current = emptyList()
+                            },
+                            onDragCancel = {
+                                current = emptyList()
+                                vm.setBoardDragging(false)
+                            },
+                        )
+                    },
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+                ) {
+                    others.forEach { layer ->
+                        paintBoardStrokes(
+                            layer.strokes.map { it.toStroke() },
+                            logicalW,
+                            logicalH,
+                        )
+                    }
+                    paintBoardStrokes(state.boardMineStrokes, logicalW, logicalH)
+                    if (current.size >= 2) {
+                        paintBoardStroke(
+                            BoardStroke(state.boardTool, state.boardColor, state.boardPenSize, current),
+                            size.width / logicalW,
+                            size.height / logicalH,
+                        )
+                    }
                 }
             }
         }

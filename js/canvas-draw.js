@@ -159,13 +159,23 @@ const CanvasDraw = (() => {
     let onStrokeEnd = opts.onStrokeEnd || null;
     const transparent = !!opts.transparent;
     const toolsEnabled = !!opts.tools;
+    let logicalW = Math.max(0, Number(opts.logicalW) || 0);
+    let logicalH = Math.max(0, Number(opts.logicalH) || 0);
 
-    function cssSize() {
+    function viewMetrics() {
       const wrap = canvas.parentElement;
       const rect = wrap.getBoundingClientRect();
+      const availW = Math.max(1, Math.floor(rect.width));
+      const availH = Math.max(1, Math.floor(rect.height));
+      const lw = logicalW > 0 ? logicalW : availW;
+      const lh = logicalH > 0 ? logicalH : availH;
+      const scale = Math.min(availW / lw, availH / lh);
       return {
-        w: Math.max(1, Math.floor(rect.width)),
-        h: Math.max(1, Math.floor(rect.height))
+        displayW: Math.max(1, Math.floor(lw * scale)),
+        displayH: Math.max(1, Math.floor(lh * scale)),
+        logicalW: lw,
+        logicalH: lh,
+        scale
       };
     }
 
@@ -180,18 +190,18 @@ const CanvasDraw = (() => {
 
     function resize() {
       if (!canvas) return;
-      const { w: cssW, h: cssH } = cssSize();
+      const m = viewMetrics();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const snapshot = strokes.slice();
 
-      canvas.width = Math.floor(cssW * dpr);
-      canvas.height = Math.floor(cssH * dpr);
-      canvas.style.width = cssW + "px";
-      canvas.style.height = cssH + "px";
+      canvas.width = Math.floor(m.logicalW * dpr);
+      canvas.height = Math.floor(m.logicalH * dpr);
+      canvas.style.width = m.displayW + "px";
+      canvas.style.height = m.displayH + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      redraw(snapshot, cssW, cssH);
+      redraw(snapshot, m.logicalW, m.logicalH);
       strokes = snapshot;
     }
 
@@ -207,9 +217,12 @@ const CanvasDraw = (() => {
     function pointerPos(e) {
       const rect = canvas.getBoundingClientRect();
       const point = e.touches ? e.touches[0] : e;
+      const m = viewMetrics();
+      const cssX = point.clientX - rect.left;
+      const cssY = point.clientY - rect.top;
       return {
-        x: q(point.clientX - rect.left),
-        y: q(point.clientY - rect.top)
+        x: q(cssX * (m.logicalW / Math.max(1, rect.width))),
+        y: q(cssY * (m.logicalH / Math.max(1, rect.height)))
       };
     }
 
@@ -236,8 +249,8 @@ const CanvasDraw = (() => {
           points: [p.x, p.y],
           text: cleaned
         });
-        const { w, h } = cssSize();
-        redraw(strokes, w, h);
+        const m = viewMetrics();
+        redraw(strokes, m.logicalW, m.logicalH);
         finishStroke();
         return;
       }
@@ -252,8 +265,8 @@ const CanvasDraw = (() => {
         current = { type, color, size, points: [p.x, p.y] };
       }
       strokes.push(current);
-      const { w, h } = cssSize();
-      redraw(strokes, w, h);
+      const m = viewMetrics();
+      redraw(strokes, m.logicalW, m.logicalH);
     }
 
     function move(e) {
@@ -263,15 +276,14 @@ const CanvasDraw = (() => {
       if (SHAPE_TOOLS.includes(current.type)) {
         current.points[2] = p.x;
         current.points[3] = p.y;
-        const { w, h } = cssSize();
-        redraw(strokes, w, h);
+        const m = viewMetrics();
+        redraw(strokes, m.logicalW, m.logicalH);
         return;
       }
       const dx = p.x - lastX;
       const dy = p.y - lastY;
       if (dx * dx + dy * dy < 2.25) return;
       current.points.push(p.x, p.y);
-      // Incremental paint for pen/erase
       paintOneStroke(ctx, {
         type: current.type,
         color: current.color,
@@ -291,10 +303,9 @@ const CanvasDraw = (() => {
           const dx = pts[2] - pts[0];
           const dy = pts[3] - pts[1];
           if (dx * dx + dy * dy < 4) {
-            // Too small — drop
             strokes.pop();
-            const { w, h } = cssSize();
-            redraw(strokes, w, h);
+            const m = viewMetrics();
+            redraw(strokes, m.logicalW, m.logicalH);
           }
         }
       }
@@ -338,11 +349,20 @@ const CanvasDraw = (() => {
       onStrokeEnd = fn;
     }
 
+    function setLogicalSize(w, h) {
+      const nextW = Math.max(1, Number(w) || logicalW || 1280);
+      const nextH = Math.max(1, Number(h) || logicalH || 720);
+      if (nextW === logicalW && nextH === logicalH) return;
+      logicalW = nextW;
+      logicalH = nextH;
+      resize();
+    }
+
     function clear() {
       strokes = [];
       current = null;
-      const { w, h } = cssSize();
-      fillBackground(w, h);
+      const m = viewMetrics();
+      fillBackground(m.logicalW, m.logicalH);
     }
 
     function isBlank() {
@@ -358,27 +378,30 @@ const CanvasDraw = (() => {
       strokes.pop();
       current = null;
       drawing = false;
-      const { w, h } = cssSize();
-      redraw(strokes, w, h);
+      const m = viewMetrics();
+      redraw(strokes, m.logicalW, m.logicalH);
       return true;
     }
 
     function getDrawingPayload() {
-      const { w, h } = cssSize();
+      const m = viewMetrics();
       return {
-        w,
-        h,
+        w: m.logicalW,
+        h: m.logicalH,
         strokes: strokes.map(toWireStroke)
       };
     }
 
     function loadDrawing(payload) {
-      const { w, h } = cssSize();
       clear();
       if (!payload) return;
+      if (payload.w > 0 && payload.h > 0) {
+        logicalW = Number(payload.w) || logicalW;
+        logicalH = Number(payload.h) || logicalH;
+      }
       const list = (payload.strokes || []).map(fromWireStroke);
       strokes = list;
-      redraw(list, w, h);
+      resize();
     }
 
     function open() {
@@ -393,6 +416,7 @@ const CanvasDraw = (() => {
       getTool,
       setEnabled,
       setOnStrokeEnd,
+      setLogicalSize,
       clear,
       isBlank,
       strokeCount,

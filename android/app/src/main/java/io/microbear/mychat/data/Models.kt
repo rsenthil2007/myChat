@@ -72,6 +72,7 @@ data class ChatMessage(
     @field:Transient val sketchPng: ByteArray? = null,
     @field:Transient val audioBytes: ByteArray? = null,
     @field:Transient val audioMime: String? = null,
+    @field:Transient val audioDurationMs: Long = 0L,
 )
 
 data class OutgoingSecure(

@@ -393,7 +393,11 @@ private fun MessageBubble(
                         contentColor = if (mine) Slate else Mist,
                     ),
                 ) {
-                    Text(if (playing) "Stop voice note" else "Play voice note")
+                    val label = when {
+                        playing -> "Stop · " + (msg.displayText.ifBlank { "Voice note" })
+                        else -> "Play · " + (msg.displayText.ifBlank { "Voice note" })
+                    }
+                    Text(label)
                 }
             }
             else -> BubbleText(msg.displayText.ifBlank { "[empty]" }, mine)

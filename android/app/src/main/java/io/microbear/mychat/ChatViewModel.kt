@@ -2,6 +2,7 @@ package io.microbear.mychat
 
 import android.app.Application
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -62,8 +63,6 @@ data class ChatUiState(
     val boardPenSize: Float = 4f,
     val boardTool: String = "pen",
     val boardMineStrokes: List<BoardStroke> = emptyList(),
-    val boardCanvasW: Int = 0,
-    val boardCanvasH: Int = 0,
     val boardDragging: Boolean = false,
     val confirmClearBoard: Boolean = false,
 )
@@ -189,11 +188,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun onBoardPenSize(value: Float) { ui = ui.copy(boardPenSize = value) }
     fun onBoardTool(value: String) { ui = ui.copy(boardTool = value) }
-    fun onBoardCanvasSize(w: Int, h: Int) {
-        if (w != ui.boardCanvasW || h != ui.boardCanvasH) {
-            ui = ui.copy(boardCanvasW = w, boardCanvasH = h)
-        }
-    }
     fun setBoardDragging(value: Boolean) { ui = ui.copy(boardDragging = value) }
     fun askClearBoard() { ui = ui.copy(confirmClearBoard = true) }
     fun dismissClearBoard() { ui = ui.copy(confirmClearBoard = false) }
@@ -280,9 +274,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         boardSyncJob?.cancel()
         boardSyncJob = viewModelScope.launch {
             if (!immediate) delay(220)
-            val w = ui.boardCanvasW
-            val h = ui.boardCanvasH
-            if (w < 8 || h < 8) return@launch
+            val (w, h) = boardLogicalSize(ui.board)
             val server = ui.serverUrl
             val roomId = ui.roomId
             val drawing = mapOf(
@@ -494,7 +486,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     ui = ui.copy(
                         messages = opened,
                         status = "Synced · $count messages",
-                        error = if (ui.recording) ui.error else null,
                     )
                     applyWhiteboard(board)
                 } catch (e: Exception) {
@@ -512,6 +503,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     sketchPng = cached.sketchPng,
                     audioBytes = cached.audioBytes,
                     audioMime = cached.audioMime,
+                    audioDurationMs = cached.audioDurationMs,
                 )
             }
             val opened = openMessage(msg, roomId)
@@ -541,10 +533,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {
                     null
                 }
+                val durationMs = if (bytes != null) audioDurationMs(bytes, mime) else 0L
                 return msg.copy(
-                    displayText = if (bytes == null) "(invalid audio)" else "Voice note",
+                    displayText = if (bytes == null) "(invalid audio)" else formatVoiceLabel(durationMs),
                     audioBytes = bytes,
                     audioMime = mime,
+                    audioDurationMs = durationMs,
                 )
             }
             else -> {
@@ -588,6 +582,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun cancelRecording() {
+        recordTimeout?.cancel()
+        recordTimeout = null
         try {
             recorder?.apply {
                 reset()
@@ -598,6 +594,38 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         recorder = null
         recordFile?.delete()
         recordFile = null
+    }
+
+    private fun audioDurationMs(bytes: ByteArray, mime: String): Long {
+        val ext = when {
+            "mp4" in mime || "aac" in mime || "m4a" in mime -> "m4a"
+            "webm" in mime -> "webm"
+            "ogg" in mime -> "ogg"
+            else -> "bin"
+        }
+        val file = File(getApplication<Application>().cacheDir, "mychat-dur-$ext")
+        val retriever = MediaMetadataRetriever()
+        return try {
+            file.writeBytes(bytes)
+            retriever.setDataSource(file.absolutePath)
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+            file.delete()
+        }
+    }
+
+    private fun formatVoiceLabel(durationMs: Long): String {
+        if (durationMs <= 0L) return "Voice note"
+        val totalSec = (durationMs + 500) / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        return if (min > 0) "Voice note · ${min}m ${sec}s" else "Voice note · ${sec}s"
     }
 
     private fun newAuthorId(): String =

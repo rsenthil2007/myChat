@@ -397,14 +397,17 @@ body {
   flex: 1;
   min-height: 200px;
   padding: 10px 12px 0;
-  display: grid;
+  display: block;
+  position: relative;
+  overflow: hidden;
 }
 
 #board-bg,
 #board-mine {
-  grid-area: 1 / 1;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: block;
   border: 1px solid var(--line);
   border-radius: 14px;

@@ -10,6 +10,11 @@ MAX_STROKES_PER_LAYER = 400
 # RGB Euclidean distance under this counts as "same" color across members
 COLOR_NEAR_THRESHOLD = 48
 
+# Fixed logical canvas for every client (phone, laptop, APK). Stroke coords are
+# always in this space; UIs letterbox/contain to fit their local view.
+CANONICAL_W = 1280
+CANONICAL_H = 720
+
 # Fixed room palette — assigned one-per-member on join; also offered as swatches
 PALETTE = [
     {"id": "black", "name": "Black", "hex": "#0f172a"},
@@ -35,8 +40,8 @@ def utc_now() -> str:
 
 def empty_whiteboard() -> dict:
     return {
-        "w": 0,
-        "h": 0,
+        "w": CANONICAL_W,
+        "h": CANONICAL_H,
         "layers": [],
         "palette": list(PALETTE),
         "updatedAt": utc_now(),
@@ -45,13 +50,25 @@ def empty_whiteboard() -> dict:
 
 def public_whiteboard(board: dict | None) -> dict:
     data = board or empty_whiteboard()
+    w = int(data.get("w") or 0) or CANONICAL_W
+    h = int(data.get("h") or 0) or CANONICAL_H
     return {
-        "w": int(data.get("w") or 0),
-        "h": int(data.get("h") or 0),
+        "w": w,
+        "h": h,
         "layers": list(data.get("layers") or []),
         "palette": list(data.get("palette") or PALETTE),
         "updatedAt": data.get("updatedAt") or utc_now(),
     }
+
+
+def ensure_board_size(board: dict) -> dict:
+    """Keep a stable logical size; never follow a client's screen pixels."""
+    if not int(board.get("w") or 0):
+        board["w"] = CANONICAL_W
+    if not int(board.get("h") or 0):
+        board["h"] = CANONICAL_H
+    return board
+
 
 
 def normalize_hex(value: str | None, fallback: str = "#0f172a") -> str:
@@ -85,6 +102,7 @@ def _ensure_board(room: dict) -> dict:
         board["layers"] = []
     if not board.get("palette"):
         board["palette"] = list(PALETTE)
+    ensure_board_size(board)
     room["whiteboard"] = board
     return board
 
@@ -283,10 +301,8 @@ def apply_strokes(
     layer["updatedAt"] = utc_now()
     board["layers"][idx] = layer
 
-    if width and width > 0:
-        board["w"] = int(width)
-    if height and height > 0:
-        board["h"] = int(height)
+    # Ignore client screen pixels — logical size is fixed for the room.
+    ensure_board_size(board)
     board["updatedAt"] = utc_now()
     room["whiteboard"] = board
     return room

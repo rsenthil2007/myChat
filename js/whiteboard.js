@@ -26,6 +26,8 @@ const Whiteboard = (() => {
     { id: "gray", name: "Gray", hex: "#64748b" }
   ];
 
+  const CANONICAL_W = 1280;
+  const CANONICAL_H = 720;
   const NEAR = 48;
   const els = {};
 
@@ -174,20 +176,35 @@ const Whiteboard = (() => {
     }
   }
 
+  function boardLogicalSize() {
+    const w = (state && state.w > 0 ? state.w : CANONICAL_W) || CANONICAL_W;
+    const h = (state && state.h > 0 ? state.h : CANONICAL_H) || CANONICAL_H;
+    return { w, h };
+  }
+
   function resizeBg() {
     if (!els.bg || !els.bg.parentElement) return;
     const wrap = els.bg.parentElement;
     const rect = wrap.getBoundingClientRect();
-    const w = Math.max(1, Math.floor(rect.width));
-    const h = Math.max(1, Math.floor(rect.height));
+    const availW = Math.max(1, Math.floor(rect.width));
+    const availH = Math.max(1, Math.floor(rect.height));
+    const { w: lw, h: lh } = boardLogicalSize();
+    const scale = Math.min(availW / lw, availH / lh);
+    const dw = Math.max(1, Math.floor(lw * scale));
+    const dh = Math.max(1, Math.floor(lh * scale));
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    els.bg.width = Math.floor(w * dpr);
-    els.bg.height = Math.floor(h * dpr);
-    els.bg.style.width = w + "px";
-    els.bg.style.height = h + "px";
+
+    [els.bg, els.mine].forEach((el) => {
+      if (!el) return;
+      el.style.width = dw + "px";
+      el.style.height = dh + "px";
+    });
+
+    els.bg.width = Math.floor(lw * dpr);
+    els.bg.height = Math.floor(lh * dpr);
     const ctx = els.bg.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paintOthers(ctx, w, h);
+    paintOthers(ctx, lw, lh);
   }
 
   function paintOthers(ctx, w, h) {
@@ -287,12 +304,14 @@ const Whiteboard = (() => {
 
     if (stamp !== lastStamp) {
       lastStamp = stamp;
+      const { w: lw, h: lh } = boardLogicalSize();
+      if (minePad && minePad.setLogicalSize) minePad.setLogicalSize(lw, lh);
       resizeBg();
       if (minePad && !drawingBusy) {
         const mine = myLayer(state);
         minePad.loadDrawing({
-          w: state.w,
-          h: state.h,
+          w: lw,
+          h: lh,
           strokes: mine ? mine.strokes || [] : []
         });
       }
@@ -453,6 +472,8 @@ const Whiteboard = (() => {
     minePad = CanvasDraw.create(els.mine, {
       transparent: true,
       tools: true,
+      logicalW: CANONICAL_W,
+      logicalH: CANONICAL_H,
       onStrokeEnd: (drawing) => {
         drawingBusy = true;
         queueStrokeSync(drawing);

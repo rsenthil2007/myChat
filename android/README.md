@@ -1,8 +1,10 @@
-# Native myChat (Kotlin) — v0.4
+# Native myChat (Kotlin) — v0.4.2
 
 Android client for the same `server.py` rooms as the web app.
 
-**In this version:** sealed **text**, **sketches**, **voice notes**, **clear chat**, and a shared **Board** tab (unique color per person, pen/eraser, undo, clear mine / clear all).  
+**In this version:** sealed **text**, **sketches**, **voice notes**, **clear chat**, and a shared **Board** tab.  
+The board uses a fixed **1280×720** logical canvas on every device (phone, laptop, APK), so strokes line up.
+
 **Not yet:** Pictionary (hidden on the web too), live SSE (the app still polls every 2s).
 
 The older WebInto wrap notes stay in `Wrap/`.
@@ -15,6 +17,8 @@ The older WebInto wrap notes stay in `Wrap/`.
 4. Default **Server URL** is `https://chat.microbear.in`. For a local `python server.py`, use `http://10.0.2.2:8080` on the emulator, or `http://YOUR-PC-LAN-IP:8080` on a phone.
 
 Use the **same room code** as the browser. Chat and board share that room.
+
+If an old room’s board looks stretched after upgrading, use **Clear all** once so it adopts the shared 1280×720 size. Redeploy `server.py` / `whiteboard.py` on the VPS so the server stops rewriting board size from each device.
 
 ## GitHub debug APK
 
