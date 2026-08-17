@@ -1,26 +1,18 @@
-# Example systemd unit for myChat on Hetzner / any VPS
-#
-# 1. Copy project to /opt/mychat
-# 2. Create venv and pip install -r requirements.txt
-# 3. Adjust User= and paths below
-# 4. sudo cp mychat.service /etc/systemd/system/
-# 5. sudo systemctl enable --now mychat
-#
-# Put nginx/Caddy in front for HTTPS on :443 → proxy_pass http://127.0.0.1:8080
-
 [Unit]
 Description=myChat room server
 After=network.target
+StartLimitIntervalSec=30
+StartLimitBurst=3
 
 [Service]
 Type=simple
-User=www-data
+User=root
 WorkingDirectory=/opt/mychat
 Environment=MYCHAT_HTTP_PORT=8080
 Environment=CORS_ORIGINS=*
 ExecStart=/opt/mychat/.venv/bin/python /opt/mychat/server.py
-Restart=always
-RestartSec=3
+Restart=on-failure
+RestartSec=2
 
 [Install]
 WantedBy=multi-user.target

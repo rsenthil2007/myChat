@@ -7,6 +7,7 @@ HTTPS :8443  (required for microphone on phones over LAN)
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import queue
@@ -14,6 +15,7 @@ import re
 import socket
 import ssl
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -721,6 +723,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
 
+class ReuseThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 def _serve(server: ThreadingHTTPServer, label: str) -> None:
     try:
         server.serve_forever()
@@ -731,18 +738,33 @@ def _serve(server: ThreadingHTTPServer, label: str) -> None:
         print(f"{label} stopped.")
 
 
+def bind_http(port: int) -> ReuseThreadingHTTPServer:
+    last: OSError | None = None
+    for attempt in range(1, 16):
+        try:
+            return ReuseThreadingHTTPServer(("0.0.0.0", port), Handler)
+        except OSError as exc:
+            last = exc
+            if getattr(exc, "errno", None) not in (errno.EADDRINUSE, 98):
+                raise
+            print(f"Port {port} already in use (attempt {attempt}/15). Retrying…")
+            time.sleep(1)
+    assert last is not None
+    raise last
+
+
 def main() -> None:
     ROOMS_DIR.mkdir(parents=True, exist_ok=True)
     ips = local_ips()
     lan = next((ip for ip in ips if not ip.startswith("127.")), ips[0])
 
-    http_server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    http_server = bind_http(PORT)
     threading.Thread(target=_serve, args=(http_server, "HTTP"), daemon=True).start()
 
     https_server = None
     try:
         cert, key = ensure_tls_certs()
-        https_server = ThreadingHTTPServer(("0.0.0.0", TLS_PORT), Handler)
+        https_server = bind_http(TLS_PORT)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
         https_server.socket = ctx.wrap_socket(https_server.socket, server_side=True)
