@@ -8,6 +8,9 @@ StartLimitBurst=3
 Type=simple
 User=root
 WorkingDirectory=/opt/mychat
+ReadWritePaths=/opt/mychat /opt/mychat/data
+ProtectSystem=false
+PrivateTmp=false
 Environment=MYCHAT_HTTP_PORT=8080
 Environment=CORS_ORIGINS=*
 ExecStart=/opt/mychat/.venv/bin/python /opt/mychat/server.py
