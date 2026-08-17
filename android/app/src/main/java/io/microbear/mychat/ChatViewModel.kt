@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -44,6 +45,11 @@ data class ChatUiState(
     val displayName: String = "",
     val roomInput: String = "lobby",
     val serverUrl: String = DEFAULT_SERVER,
+    val authPhase: String = "checking",
+    val mobileInput: String = "",
+    val otp: String = "",
+    val showOtp: Boolean = false,
+    val fatalError: String? = null,
     val authorId: String = "",
     val joined: Boolean = false,
     val roomId: String = "",
@@ -91,7 +97,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         ChatUiState(
             displayName = prefs.getString("name", "") ?: "",
             roomInput = prefs.getString("room", "lobby") ?: "lobby",
-            serverUrl = prefs.getString("server", DEFAULT_SERVER) ?: DEFAULT_SERVER,
+            serverUrl = DEFAULT_SERVER,
+            mobileInput = prefs.getString("mobile", "") ?: "",
+            authPhase = if (prefs.getString("mobile", "").isNullOrBlank()) "register" else "checking",
             authorId = prefs.getString("authorId", null) ?: newAuthorId().also {
                 prefs.edit().putString("authorId", it).apply()
             },
@@ -99,23 +107,88 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     )
         private set
 
+    init {
+        bootstrapDevice()
+    }
+
+    private fun deviceSsaid(): String {
+        return Settings.Secure.getString(
+            getApplication<Application>().contentResolver,
+            Settings.Secure.ANDROID_ID,
+        ) ?: ""
+    }
+
     fun onName(value: String) { ui = ui.copy(displayName = value.take(24), error = null) }
     fun onRoom(value: String) { ui = ui.copy(roomInput = value.take(24), error = null) }
-    fun onServer(value: String) { ui = ui.copy(serverUrl = value, error = null) }
+    fun onMobile(value: String) {
+        ui = ui.copy(mobileInput = value.filter { it.isDigit() || it == '+' }.take(16), error = null)
+    }
     fun onDraft(value: String) { ui = ui.copy(draft = value.take(2000)) }
+
+    fun bootstrapDevice() {
+        val mobile = prefs.getString("mobile", "") ?: ""
+        if (mobile.isBlank()) {
+            ui = ui.copy(authPhase = "register", busy = false)
+            return
+        }
+        ui = ui.copy(authPhase = "checking", busy = true, error = null, fatalError = null)
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { api.verifyDevice(DEFAULT_SERVER, mobile, deviceSsaid()) }
+                ui = ui.copy(authPhase = "ok", busy = false, error = null)
+            } catch (e: Exception) {
+                val msg = e.message ?: "Could not verify this device"
+                val mismatch = msg.contains("does not match", ignoreCase = true) ||
+                    msg.contains("already registered", ignoreCase = true)
+                if (mismatch) {
+                    ui = ui.copy(authPhase = "blocked", busy = false, fatalError = msg, error = msg)
+                } else {
+                    ui = ui.copy(authPhase = "checking", busy = false, error = msg)
+                }
+            }
+        }
+    }
+
+    fun registerDevice() {
+        val mobile = ui.mobileInput.trim()
+        if (mobile.filter { it.isDigit() }.length < 10) {
+            ui = ui.copy(error = "Enter a valid mobile number.")
+            return
+        }
+        ui = ui.copy(busy = true, error = null)
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.registerDevice(DEFAULT_SERVER, mobile, deviceSsaid())
+                }
+                val otp = res.otp?.takeIf { it.isNotBlank() } ?: error("Server did not return an OTP")
+                ui = ui.copy(
+                    busy = false,
+                    otp = otp,
+                    showOtp = true,
+                    mobileInput = res.mobile ?: mobile,
+                )
+            } catch (e: Exception) {
+                ui = ui.copy(busy = false, error = e.message ?: "Could not register this phone")
+            }
+        }
+    }
+
+    fun confirmOtp() {
+        val mobile = ui.mobileInput.filter { it.isDigit() }.let { digits ->
+            if (digits.startsWith("91") && digits.length == 12) digits.drop(2) else digits
+        }
+        prefs.edit().putString("mobile", mobile).apply()
+        ui = ui.copy(showOtp = false, authPhase = "ok", error = null)
+    }
 
     fun join() {
         val name = ui.displayName.trim().ifEmpty { "Guest" }
         val room = RoomIds.normalize(ui.roomInput)
-        val server = ui.serverUrl.trim().trimEnd('/')
-        if (server.isEmpty()) {
-            ui = ui.copy(error = "Enter the chat server URL.")
-            return
-        }
+        val server = DEFAULT_SERVER
         prefs.edit()
             .putString("name", name)
             .putString("room", room)
-            .putString("server", server)
             .apply()
 
         ui = ui.copy(busy = true, error = null, status = "Connecting…")

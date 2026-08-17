@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server as chat_server  # noqa: E402
+import device_accounts as devices  # noqa: E402
 import pictionary_game as picto  # noqa: E402
 import whiteboard as wb  # noqa: E402
 
@@ -77,6 +79,50 @@ class RoomHelpersTest(unittest.TestCase):
         self.assertFalse(chat_server.valid_b64_field("A" * 20, 8))
 
 
+class DeviceAccountsTest(unittest.TestCase):
+    def setUp(self):
+        self._old = devices.DEVICES_PATH
+        self.path = ROOT / "data" / "devices_unit_test.json"
+        devices.DEVICES_PATH = self.path
+        if self.path.exists():
+            self.path.unlink()
+        self._old_url = os.environ.pop("SUPABASE_URL", None)
+        self._old_key = os.environ.pop("SUPABASE_SERVICE_KEY", None)
+
+    def tearDown(self):
+        if self.path.exists():
+            self.path.unlink()
+        tmp = self.path.with_suffix(".json.tmp")
+        if tmp.exists():
+            tmp.unlink()
+        devices.DEVICES_PATH = self._old
+        if self._old_url is not None:
+            os.environ["SUPABASE_URL"] = self._old_url
+        if self._old_key is not None:
+            os.environ["SUPABASE_SERVICE_KEY"] = self._old_key
+
+    def test_normalize_strips_country_code(self):
+        self.assertEqual(devices.normalize_mobile("+91 98765 43210"), "9876543210")
+
+    def test_register_returns_otp_and_binds_ssaid(self):
+        result = devices.register("9876543210", "aabbccddeeff0011")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mobile"], "9876543210")
+        self.assertRegex(result["otp"], r"^\d{6}$")
+        again = devices.register("9876543210", "aabbccddeeff0011")
+        self.assertEqual(again["otp"], result["otp"])
+        devices.verify("9876543210", "aabbccddeeff0011")
+
+    def test_other_device_is_rejected(self):
+        devices.register("9876543210", "aabbccddeeff0011")
+        with self.assertRaises(devices.DeviceAuthError) as ctx:
+            devices.register("9876543210", "1122334455667788")
+        self.assertEqual(ctx.exception.status, 409)
+        with self.assertRaises(devices.DeviceAuthError) as ctx:
+            devices.verify("9876543210", "1122334455667788")
+        self.assertEqual(ctx.exception.status, 403)
+
+
 class RoomFileIsolationTest(unittest.TestCase):
     def setUp(self):
         self._old = chat_server.ROOMS_DIR
@@ -129,6 +175,11 @@ class LiveServerTest(unittest.TestCase):
         for p in cls.tmpdir.glob("*.json"):
             p.unlink()
         chat_server.ROOMS_DIR = cls.tmpdir
+        cls._old_devices = devices.DEVICES_PATH
+        cls.devfile = ROOT / "data" / "devices_live_test.json"
+        devices.DEVICES_PATH = cls.devfile
+        if cls.devfile.exists():
+            cls.devfile.unlink()
 
         cls.httpd = chat_server.ThreadingHTTPServer(("127.0.0.1", 0), chat_server.Handler)
         cls.port = cls.httpd.server_address[1]
@@ -151,10 +202,15 @@ class LiveServerTest(unittest.TestCase):
         for p in cls.tmpdir.glob("*.json"):
             p.unlink()
         chat_server.ROOMS_DIR = cls._old_rooms
+        if cls.devfile.exists():
+            cls.devfile.unlink()
+        devices.DEVICES_PATH = cls._old_devices
 
     def setUp(self):
         for p in self.tmpdir.glob("*.json"):
             p.unlink()
+        if self.devfile.exists():
+            self.devfile.unlink()
 
     def _json(self, method: str, path: str, body: dict | None = None):
         data = None if body is None else json.dumps(body).encode("utf-8")
@@ -191,6 +247,31 @@ class LiveServerTest(unittest.TestCase):
         status, data = self._json("GET", "/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(data.get("ok"))
+
+    def test_device_register_and_verify(self):
+        status, data = self._json(
+            "POST",
+            "/api/device/register",
+            {"mobile": "9876543210", "ssaid": "aabbccddeeff0011"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+        self.assertRegex(data.get("otp") or "", r"^\d{6}$")
+        status, data = self._json(
+            "POST",
+            "/api/device/verify",
+            {"mobile": "9876543210", "ssaid": "aabbccddeeff0011"},
+        )
+        self.assertEqual(status, 200)
+        req = urllib.request.Request(
+            self.base + "/api/device/verify",
+            data=json.dumps({"mobile": "9876543210", "ssaid": "1122334455667788"}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(ctx.exception.code, 403)
 
     def test_post_get_message(self):
         msg = self._secure_text("hello-api", "suite-a", "A")

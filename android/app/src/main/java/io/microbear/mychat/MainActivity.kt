@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Delete
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -91,6 +93,8 @@ class MainActivity : ComponentActivity() {
             ) {
                 val state = vm.ui
                 when {
+                    state.authPhase == "blocked" -> DeviceBlockedScreen(state) { finishAffinity() }
+                    state.authPhase != "ok" -> DeviceGateScreen(state, vm)
                     !state.joined -> JoinScreen(state, vm)
                     state.sketching -> SketchScreen(
                         busy = state.busy,
@@ -101,6 +105,21 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         vm = vm,
                         onMic = { onMicTap(state) },
+                    )
+                }
+                if (state.showOtp) {
+                    AlertDialog(
+                        onDismissRequest = {},
+                        title = { Text("Your OTP") },
+                        text = {
+                            Text(
+                                "This code is bound to this phone’s SSAID.\nIt is not sent by SMS.\n\n${state.otp}",
+                                fontSize = 16.sp,
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = vm::confirmOtp) { Text("Continue", color = Teal) }
+                        },
                     )
                 }
                 if (state.confirmClear) {
@@ -206,15 +225,6 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
             modifier = Modifier.fillMaxWidth(),
             colors = fieldColors,
         )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = state.serverUrl,
-            onValueChange = vm::onServer,
-            label = { Text("Server URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            colors = fieldColors,
-        )
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = vm::join,
@@ -227,6 +237,103 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         state.error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = Danger, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Teal,
+        unfocusedBorderColor = Mute,
+        focusedLabelColor = Teal,
+        cursorColor = Teal,
+        focusedTextColor = Mist,
+        unfocusedTextColor = Mist,
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Slate)
+            .imePadding()
+            .displayCutoutPadding()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("myChat ${BuildConfig.VERSION_NAME}", color = Teal, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        if (state.authPhase == "checking") {
+            Text("Checking this device", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text("Matching your mobile number with this phone’s SSAID.", color = Mute, fontSize = 13.sp)
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = vm::bootstrapDevice,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+            ) {
+                Text(if (state.busy) "Checking…" else "Retry")
+            }
+        } else {
+            Text("Register this phone", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Enter the mobile number for this device. We bind it to this phone’s SSAID and show a one-time code in the app — no SMS.",
+                color = Mute,
+                fontSize = 13.sp,
+            )
+            Spacer(Modifier.height(20.dp))
+            OutlinedTextField(
+                value = state.mobileInput,
+                onValueChange = vm::onMobile,
+                label = { Text("Mobile number") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = vm::registerDevice,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+            ) {
+                Text(if (state.busy) "Registering…" else "Register")
+            }
+        }
+        state.error?.let {
+            Spacer(Modifier.height(12.dp))
+            Text(it, color = Danger, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun DeviceBlockedScreen(state: ChatUiState, onClose: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Slate)
+            .displayCutoutPadding()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Device not allowed", color = Danger, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            state.fatalError ?: "This mobile number does not match this phone.",
+            color = Mist,
+            fontSize = 15.sp,
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Slate),
+        ) {
+            Text("Close")
         }
     }
 }

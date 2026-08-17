@@ -79,6 +79,30 @@ class ChatApi(
         }
     }
 
+    fun registerDevice(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
+        return postDevice(baseUrl, "/api/device/register", mobile, ssaid)
+    }
+
+    fun verifyDevice(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
+        return postDevice(baseUrl, "/api/device/verify", mobile, ssaid)
+    }
+
+    private fun postDevice(
+        baseUrl: String,
+        path: String,
+        mobile: String,
+        ssaid: String,
+    ): DeviceAuthResponse {
+        val payload = gson.toJson(mapOf("mobile" to mobile, "ssaid" to ssaid)).toRequestBody(jsonType)
+        val req = Request.Builder().url(join(baseUrl, path)).post(payload).build()
+        client.newCall(req).execute().use { res ->
+            val text = res.body?.string().orEmpty()
+            val parsed = runCatching { gson.fromJson(text, DeviceAuthResponse::class.java) }.getOrNull()
+            if (!res.isSuccessful) error(parsed?.error ?: "Device ${res.code}: $text")
+            return parsed ?: error("Empty device response")
+        }
+    }
+
     private fun join(baseUrl: String, path: String): String {
         val base = baseUrl.trim().trimEnd('/')
         return base + path

@@ -19,6 +19,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
+import device_accounts as devices
 import pictionary_game as picto
 import whiteboard as wb
 
@@ -311,7 +312,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "sync": "shared",
                     "persistRooms": PERSIST_ROOMS,
                     "secureHint": "Serve this app over HTTPS (nginx/Caddy) for microphone on phones and WebIntoApp",
-                    "features": ["chat", "board", "audio", "pictionary"],
+                    "features": ["chat", "board", "audio", "pictionary", "deviceAuth"],
                 },
             )
             return
@@ -341,6 +342,12 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         path = unquote(self.path.split("?", 1)[0])
         parts = path.strip("/").split("/")
+        if path == "/api/device/register":
+            self.handle_device_register()
+            return
+        if path == "/api/device/verify":
+            self.handle_device_verify()
+            return
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "rooms" and parts[3] == "messages":
             self.handle_post_message(normalize_room(parts[2]))
             return
@@ -672,6 +679,28 @@ class Handler(SimpleHTTPRequestHandler):
                 "whiteboard": wb.public_whiteboard(room.get("whiteboard")),
             },
         )
+
+    def handle_device_register(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.register(str(payload.get("mobile") or ""), str(payload.get("ssaid") or ""))
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        self.write_json(200, result)
+
+    def handle_device_verify(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.verify(str(payload.get("mobile") or ""), str(payload.get("ssaid") or ""))
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        self.write_json(200, result)
 
     def write_json(self, status: int, data: dict) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")

@@ -3,6 +3,13 @@ package io.microbear.mychat.data
 import com.google.gson.annotations.SerializedName
 import kotlin.jvm.Transient
 
+data class DeviceAuthResponse(
+    val ok: Boolean = false,
+    val otp: String? = null,
+    val mobile: String? = null,
+    val error: String? = null,
+)
+
 data class HealthResponse(
     val ok: Boolean = false,
     val version: Int = 0,
