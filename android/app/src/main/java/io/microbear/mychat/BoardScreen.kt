@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -42,6 +43,7 @@ private val Mist = Color(0xFFE2E8F0)
 private val Mute = Color(0xFF94A3B8)
 private val Danger = Color(0xFFF87171)
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modifier) {
     var current by remember { mutableStateOf<List<Float>>(emptyList()) }
