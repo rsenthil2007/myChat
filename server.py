@@ -14,6 +14,7 @@ import queue
 import re
 import socket
 import ssl
+import subprocess
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -738,6 +739,21 @@ def _serve(server: ThreadingHTTPServer, label: str) -> None:
         print(f"{label} stopped.")
 
 
+def _print_port_owners(port: int) -> None:
+    try:
+        out = subprocess.check_output(["ss", "-tlnp"], text=True, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        print(f"(could not list listeners: {exc})")
+        return
+    matched = [line for line in out.splitlines() if f":{port}" in line]
+    if matched:
+        print("Listeners:")
+        for line in matched:
+            print(line)
+    else:
+        print(f"(ss found no :{port} listener)")
+
+
 def bind_http(port: int) -> ReuseThreadingHTTPServer:
     last: OSError | None = None
     for attempt in range(1, 16):
@@ -748,6 +764,8 @@ def bind_http(port: int) -> ReuseThreadingHTTPServer:
             if getattr(exc, "errno", None) not in (errno.EADDRINUSE, 98):
                 raise
             print(f"Port {port} already in use (attempt {attempt}/15). Retrying…")
+            if attempt in (1, 15):
+                _print_port_owners(port)
             time.sleep(1)
     assert last is not None
     raise last
