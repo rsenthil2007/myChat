@@ -66,7 +66,7 @@ data class ChatUiState(
     val board: WhiteboardState = WhiteboardState(),
     val boardJoined: Boolean = false,
     val boardColor: String = "#0f172a",
-    val boardPenSize: Float = 6f,
+    val boardPenSize: Float = 12f,
     val boardTool: String = "pen",
     val boardMineStrokes: List<BoardStroke> = emptyList(),
     val boardDragging: Boolean = false,
@@ -608,12 +608,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     ui = ui.copy(
                         messages = opened,
                         status = "Synced · $count messages",
+                        error = null,
                     )
                     applyWhiteboard(board)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    ui = ui.copy(status = "Reconnecting…", error = e.message)
+                    if (ui.status.startsWith("Synced")) {
+                        ui = ui.copy(status = "Reconnecting…")
+                    } else {
+                        ui = ui.copy(status = "Reconnecting…", error = e.message)
+                    }
                 }
             }
         }
