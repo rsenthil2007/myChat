@@ -58,7 +58,8 @@ private val PenColors = listOf(
 @Composable
 fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<SketchStroke>) -> Unit) {
     var colorHex by remember { mutableStateOf("#0f172a") }
-    var size by remember { mutableFloatStateOf(4f) }
+    var sizeSlider by remember { mutableFloatStateOf(4f) }
+    val size = sizeSlider * (canvasSize.width.toFloat().coerceAtLeast(300f) / 300f)
     var strokes by remember { mutableStateOf(listOf<SketchStroke>()) }
     var current by remember { mutableStateOf<List<Float>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
@@ -109,8 +110,8 @@ fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<Sk
                 )
             }
             Slider(
-                value = size,
-                onValueChange = { size = it },
+                value = sizeSlider,
+                onValueChange = { sizeSlider = it },
                 valueRange = 2f..24f,
                 modifier = Modifier.weight(1f),
                 colors = SliderDefaults.colors(thumbColor = Teal, activeTrackColor = Teal),
@@ -127,7 +128,7 @@ fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<Sk
                 .padding(12.dp)
                 .background(Color.White)
                 .onSizeChanged { canvasSize = it }
-                .pointerInput(colorHex, size) {
+                .pointerInput(colorHex, sizeSlider) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             current = listOf(offset.x, offset.y)

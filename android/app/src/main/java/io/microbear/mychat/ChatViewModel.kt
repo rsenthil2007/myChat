@@ -610,6 +610,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                         status = "Synced · $count messages",
                     )
                     applyWhiteboard(board)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     ui = ui.copy(status = "Reconnecting…", error = e.message)
                 }
