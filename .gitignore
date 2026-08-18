@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+data/firebase-service-account.json
+*firebase-adminsdk*.json
+data/devices.json
+data/devices_*.json
+data/rooms/*.json
+!data/rooms/README.txt
+.env

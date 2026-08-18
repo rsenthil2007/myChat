@@ -88,6 +88,8 @@ class DeviceAccountsTest(unittest.TestCase):
             self.path.unlink()
         self._old_url = os.environ.pop("SUPABASE_URL", None)
         self._old_key = os.environ.pop("SUPABASE_SERVICE_KEY", None)
+        self._old_test = os.environ.get("MYCHAT_ALLOW_TEST_TOKENS")
+        os.environ["MYCHAT_ALLOW_TEST_TOKENS"] = "1"
 
     def tearDown(self):
         if self.path.exists():
@@ -100,32 +102,45 @@ class DeviceAccountsTest(unittest.TestCase):
             os.environ["SUPABASE_URL"] = self._old_url
         if self._old_key is not None:
             os.environ["SUPABASE_SERVICE_KEY"] = self._old_key
+        if self._old_test is None:
+            os.environ.pop("MYCHAT_ALLOW_TEST_TOKENS", None)
+        else:
+            os.environ["MYCHAT_ALLOW_TEST_TOKENS"] = self._old_test
 
     def test_normalize_strips_country_code(self):
         self.assertEqual(devices.normalize_mobile("+91 98765 43210"), "9876543210")
 
-    def test_register_returns_otp_and_binds_ssaid(self):
-        result = devices.register("9876543210", "aabbccddeeff0011")
+    def test_display_name_is_required(self):
+        with self.assertRaises(devices.DeviceAuthError):
+            devices.normalize_display_name(" ")
+        self.assertEqual(devices.normalize_display_name("  Ada  "), "Ada")
+
+    def test_register_binds_ssaid_and_keeps_username(self):
+        token = "test:9876543210:uid-alice"
+        result = devices.register(token, "aabbccddeeff0011", "Alice")
         self.assertTrue(result["ok"])
         self.assertEqual(result["mobile"], "9876543210")
-        self.assertRegex(result["otp"], r"^\d{6}$")
-        again = devices.register("9876543210", "aabbccddeeff0011")
-        self.assertEqual(again["otp"], result["otp"])
-        devices.verify("9876543210", "aabbccddeeff0011")
+        self.assertEqual(result["displayName"], "Alice")
+        again = devices.register(token, "aabbccddeeff0011", "Alicia")
+        self.assertEqual(again["displayName"], "Alice")
+        verified = devices.verify(token, "aabbccddeeff0011")
+        self.assertEqual(verified["displayName"], "Alice")
 
     def test_other_device_is_rejected(self):
-        devices.register("9876543210", "aabbccddeeff0011")
+        token = "test:9876543210:uid-alice"
+        devices.register(token, "aabbccddeeff0011", "Alice")
         with self.assertRaises(devices.DeviceAuthError) as ctx:
-            devices.register("9876543210", "1122334455667788")
+            devices.register(token, "1122334455667788", "Alice")
         self.assertEqual(ctx.exception.status, 409)
         with self.assertRaises(devices.DeviceAuthError) as ctx:
-            devices.verify("9876543210", "1122334455667788")
+            devices.verify(token, "1122334455667788")
         self.assertEqual(ctx.exception.status, 403)
 
     def test_non_hex_ssaid_is_hashed(self):
-        result = devices.register("9123456780", "not-a-hex-id")
+        token = "test:9123456780:uid-bob"
+        result = devices.register(token, "not-a-hex-id", "Bob")
         self.assertTrue(result["ok"])
-        devices.verify("9123456780", "not-a-hex-id")
+        devices.verify(token, "not-a-hex-id")
 
 
 class RoomFileIsolationTest(unittest.TestCase):
@@ -185,6 +200,7 @@ class LiveServerTest(unittest.TestCase):
         devices.DEVICES_PATH = cls.devfile
         if cls.devfile.exists():
             cls.devfile.unlink()
+        os.environ["MYCHAT_ALLOW_TEST_TOKENS"] = "1"
 
         cls.httpd = chat_server.ThreadingHTTPServer(("127.0.0.1", 0), chat_server.Handler)
         cls.port = cls.httpd.server_address[1]
@@ -254,23 +270,25 @@ class LiveServerTest(unittest.TestCase):
         self.assertTrue(data.get("ok"))
 
     def test_device_register_and_verify(self):
+        token = "test:9876543210:uid-alice"
         status, data = self._json(
             "POST",
             "/api/device/register",
-            {"mobile": "9876543210", "ssaid": "aabbccddeeff0011"},
+            {"idToken": token, "ssaid": "aabbccddeeff0011", "displayName": "Alice"},
         )
         self.assertEqual(status, 200)
         self.assertTrue(data.get("ok"))
-        self.assertRegex(data.get("otp") or "", r"^\d{6}$")
+        self.assertEqual(data.get("displayName"), "Alice")
         status, data = self._json(
             "POST",
             "/api/device/verify",
-            {"mobile": "9876543210", "ssaid": "aabbccddeeff0011"},
+            {"idToken": token, "ssaid": "aabbccddeeff0011"},
         )
         self.assertEqual(status, 200)
+        self.assertEqual(data.get("displayName"), "Alice")
         req = urllib.request.Request(
             self.base + "/api/device/verify",
-            data=json.dumps({"mobile": "9876543210", "ssaid": "1122334455667788"}).encode("utf-8"),
+            data=json.dumps({"idToken": token, "ssaid": "1122334455667788"}).encode("utf-8"),
             method="POST",
             headers={"Content-Type": "application/json"},
         )

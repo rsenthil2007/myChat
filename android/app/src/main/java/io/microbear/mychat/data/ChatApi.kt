@@ -89,21 +89,37 @@ class ChatApi(
         }
     }
 
-    fun registerDevice(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
-        return postDevice(baseUrl, "/api/device/register", mobile, ssaid)
+    fun registerDevice(
+        baseUrl: String,
+        idToken: String,
+        ssaid: String,
+        displayName: String,
+    ): DeviceAuthResponse {
+        return postDevice(
+            baseUrl,
+            "/api/device/register",
+            mapOf(
+                "idToken" to idToken,
+                "ssaid" to ssaid,
+                "displayName" to displayName,
+            ),
+        )
     }
 
-    fun verifyDevice(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
-        return postDevice(baseUrl, "/api/device/verify", mobile, ssaid)
+    fun verifyDevice(baseUrl: String, idToken: String, ssaid: String): DeviceAuthResponse {
+        return postDevice(
+            baseUrl,
+            "/api/device/verify",
+            mapOf("idToken" to idToken, "ssaid" to ssaid),
+        )
     }
 
     private fun postDevice(
         baseUrl: String,
         path: String,
-        mobile: String,
-        ssaid: String,
+        body: Map<String, String>,
     ): DeviceAuthResponse {
-        val payload = gson.toJson(mapOf("mobile" to mobile, "ssaid" to ssaid)).toRequestBody(jsonType)
+        val payload = gson.toJson(body).toRequestBody(jsonType)
         val req = Request.Builder().url(join(baseUrl, path)).post(payload).build()
         client.newCall(req).execute().use { res ->
             val text = res.body?.string().orEmpty()

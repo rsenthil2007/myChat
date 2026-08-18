@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -105,21 +106,6 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         vm = vm,
                         onMic = { onMicTap(state) },
-                    )
-                }
-                if (state.showOtp) {
-                    AlertDialog(
-                        onDismissRequest = {},
-                        title = { Text("Your OTP") },
-                        text = {
-                            Text(
-                                "This code is bound to this phone’s SSAID.\nIt is not sent by SMS.\n\n${state.otp}",
-                                fontSize = 16.sp,
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = vm::confirmOtp) { Text("Continue", color = Teal) }
-                        },
                     )
                 }
                 if (state.confirmClear) {
@@ -210,8 +196,10 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = state.displayName,
-            onValueChange = vm::onName,
+            onValueChange = {},
+            enabled = false,
             label = { Text("Your name") },
+            supportingText = { Text("Set when you registered. It appears on every message.") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             colors = fieldColors,
@@ -243,6 +231,7 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
 
 @Composable
 private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
+    val activity = LocalContext.current as ComponentActivity
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Teal,
         unfocusedBorderColor = Mute,
@@ -265,7 +254,7 @@ private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
         if (state.authPhase == "checking") {
             Text("Checking this device", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text("Matching your mobile number with this phone’s SSAID.", color = Mute, fontSize = 13.sp)
+            Text("Matching your SMS session with this phone’s SSAID.", color = Mute, fontSize = 13.sp)
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = vm::bootstrapDevice,
@@ -276,31 +265,83 @@ private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
                 Text(if (state.busy) "Checking…" else "Retry")
             }
         } else {
-            Text("Register this phone", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            val smsStep = state.authPhase == "sms"
+            Text(
+                if (smsStep) "Enter the SMS code" else "Register this phone",
+                color = Mist,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Enter the mobile number for this device. We bind it to this phone’s SSAID and show a one-time code in the app — no SMS.",
+                if (smsStep) {
+                    "We sent a code to your mobile. Your user name is saved on this phone and shown on every message."
+                } else {
+                    "Choose a user name (it stays on this phone for now) and verify the mobile number with an SMS code. This phone’s SSAID is bound after that."
+                },
                 color = Mute,
                 fontSize = 13.sp,
             )
             Spacer(Modifier.height(20.dp))
             OutlinedTextField(
+                value = state.displayName,
+                onValueChange = vm::onName,
+                enabled = !smsStep,
+                label = { Text("User name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors,
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
                 value = state.mobileInput,
                 onValueChange = vm::onMobile,
+                enabled = !smsStep,
                 label = { Text("Mobile number") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = fieldColors,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             )
+            if (smsStep) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = state.otp,
+                    onValueChange = vm::onOtp,
+                    label = { Text("SMS code") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Button(
-                onClick = vm::registerDevice,
+                onClick = {
+                    if (smsStep) vm.confirmSms() else vm.sendSms(activity)
+                },
                 enabled = !state.busy,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
             ) {
-                Text(if (state.busy) "Registering…" else "Register")
+                Text(
+                    when {
+                        state.busy && smsStep -> "Checking code…"
+                        state.busy -> "Sending SMS…"
+                        smsStep -> "Confirm code"
+                        else -> "Send SMS code"
+                    },
+                )
+            }
+            if (smsStep) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = { vm.sendSms(activity) },
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Resend code", color = Teal)
+                }
             }
         }
         state.error?.let {

@@ -318,7 +318,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "sync": "shared",
                     "persistRooms": PERSIST_ROOMS,
                     "secureHint": "Serve this app over HTTPS (nginx/Caddy) for microphone on phones and WebIntoApp",
-                    "features": ["chat", "board", "audio", "pictionary", "deviceAuth"],
+                    "features": ["chat", "board", "audio", "pictionary", "deviceAuth", "firebaseSms"],
                 },
             )
             return
@@ -700,7 +700,11 @@ class Handler(SimpleHTTPRequestHandler):
         if payload is None:
             return
         try:
-            result = devices.register(str(payload.get("mobile") or ""), str(payload.get("ssaid") or ""))
+            result = devices.register(
+                str(payload.get("idToken") or payload.get("id_token") or ""),
+                str(payload.get("ssaid") or ""),
+                str(payload.get("displayName") or payload.get("userName") or ""),
+            )
         except devices.DeviceAuthError as exc:
             self.write_json(exc.status, {"ok": False, "error": str(exc)})
             return
@@ -715,7 +719,10 @@ class Handler(SimpleHTTPRequestHandler):
         if payload is None:
             return
         try:
-            result = devices.verify(str(payload.get("mobile") or ""), str(payload.get("ssaid") or ""))
+            result = devices.verify(
+                str(payload.get("idToken") or payload.get("id_token") or ""),
+                str(payload.get("ssaid") or ""),
+            )
         except devices.DeviceAuthError as exc:
             self.write_json(exc.status, {"ok": False, "error": str(exc)})
             return

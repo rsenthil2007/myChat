@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "719855443296",
+    "project_id": "mychat-6c3d8",
+    "storage_bucket": "mychat-6c3d8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:719855443296:android:b0f76ff0743d58bc34d205",
+        "android_client_info": {
+          "package_name": "in.microbear.mychat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhfJfMM1rCcS4YxmSBWsudm_-qpVIA5_c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

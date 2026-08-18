@@ -6,8 +6,9 @@ Closed-group room chat with **text**, **sketches**, **voice notes**, and a **sha
 
 - **One cheap VPS** (e.g. **Hetzner ~$3/mo**): serves the UI **and** `server.py`
 - Devices join the **same room code** → everyone sees the same chat and all board layers
-- **No login** for now; room code is the gate
+- **Android** registers with **Firebase SMS** plus a **user name**; the name is shown on every message
 - Room data stored in `data/rooms/{room}.json` on the VPS
+- Device accounts: `data/devices.json` now, optional **Supabase** table `mychat_device_accounts` later
 - `localStorage` is a cache / offline fallback only
 
 ```text
@@ -44,6 +45,9 @@ Env vars (optional):
 | `CORS_ORIGINS` | Comma-separated allowed origins, or `*` (default) |
 | `MYCHAT_HTTP_PORT` | Default `8080` |
 | `MYCHAT_HTTPS_PORT` | Default `8443` (built-in TLS; prefer nginx TLS in production) |
+| `FIREBASE_CREDENTIALS` | Path to Firebase Admin service-account JSON (VPS only; never in the APK) |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Same credentials as inline JSON instead of a file |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Optional; store device accounts in `mychat_device_accounts` |
 
 **Do not** use DigitalOcean Functions or shared PHP hosting as the sync backend.
 
@@ -112,6 +116,8 @@ python tests/test_suite.py
 ```
 myChat/
   server.py
+  firebase_auth.py
+  device_accounts.py
   whiteboard.py
   index.html
   js/config.js
@@ -120,12 +126,15 @@ myChat/
   deploy/mychat.service
   deploy/nginx-mychat.conf
   android/
+  supabase/device_accounts.sql
   data/rooms/
 ```
 
 ## Native Android (Kotlin)
 
-v0.3 chat client lives in [`android/`](android/README.md). It seals text, sketches, and voice notes with the same room-code pipe as the browser. Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
+v0.4.6 chat client lives in [`android/`](android/README.md). It seals text, sketches, and voice notes with the same room-code pipe as the browser, registers with **Firebase SMS**, and stamps messages with the user name chosen at registration. Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
+
+SMS will not work until you replace `android/app/google-services.json` (and the GitHub secret `GOOGLE_SERVICES_JSON`) with the file from Firebase, add the debug SHA-1 from `android/README.md`, and put a Firebase Admin service account on the VPS. See that README for the exact steps.
 
 ## Wrap as a mobile app (WebInto.app)
 
@@ -140,6 +149,7 @@ v0.3 chat client lives in [`android/`](android/README.md). It seals text, sketch
 
 ## Optional next steps
 
+- SMS on the web client; optional user-name rename
 - Auth / room passwords
 - Migrate LAN crypto to Web Crypto AES-GCM when HTTPS-only is acceptable
  

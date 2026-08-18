@@ -16,3 +16,4 @@ captures/
 keystore.properties
 *.jks
 *.keystore
+!ci-debug.keystore

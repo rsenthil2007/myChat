@@ -7,7 +7,6 @@ Otherwise registrations are kept in a local JSON file (fine for tests / VPS).
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import os
 import re
@@ -38,10 +37,6 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
-def otp_secret() -> str:
-    return os.environ.get("MYCHAT_DEVICE_SECRET") or "mychat-device-otp-v1"
-
-
 def normalize_mobile(raw: str) -> str:
     digits = re.sub(r"\D", "", raw or "")
     if digits.startswith("91") and len(digits) == 12:
@@ -62,15 +57,11 @@ def normalize_ssaid(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def make_otp(mobile: str, ssaid: str) -> str:
-    """6-digit code derived from mobile + SSAID + current UTC hour."""
-    slot = datetime.now(timezone.utc).strftime("%Y%m%d%H")
-    digest = hmac.new(
-        otp_secret().encode("utf-8"),
-        f"{mobile}|{ssaid}|{slot}".encode("utf-8"),
-        hashlib.sha256,
-    ).digest()
-    return f"{int.from_bytes(digest[:4], 'big') % 1_000_000:06d}"
+def normalize_display_name(raw: str) -> str:
+    name = re.sub(r"\s+", " ", (raw or "").strip())[:24]
+    if len(name) < 2:
+        raise DeviceAuthError("Enter a user name (at least 2 characters)")
+    return name
 
 
 def _use_supabase() -> bool:
@@ -107,7 +98,12 @@ def _supabase_request(method: str, path_query: str, body: dict | None = None) ->
 
 
 def _supabase_get(mobile: str) -> dict | None:
-    q = urllib.parse.urlencode({"mobile": f"eq.{mobile}", "select": "mobile,ssaid,created_at,last_seen_at"})
+    q = urllib.parse.urlencode(
+        {
+            "mobile": f"eq.{mobile}",
+            "select": "mobile,ssaid,firebase_uid,display_name,created_at,last_seen_at",
+        }
+    )
     rows = _supabase_request("GET", f"{SUPABASE_TABLE}?{q}")
     if not isinstance(rows, list) or not rows:
         return None
@@ -153,6 +149,8 @@ def lookup(mobile: str) -> dict | None:
         return {
             "mobile": str(row.get("mobile") or mobile),
             "ssaid": str(row.get("ssaid") or ""),
+            "firebaseUid": str(row.get("firebase_uid") or ""),
+            "displayName": str(row.get("display_name") or ""),
             "createdAt": str(row.get("created_at") or ""),
             "lastSeenAt": str(row.get("last_seen_at") or ""),
         }
@@ -162,52 +160,105 @@ def lookup(mobile: str) -> dict | None:
     return {
         "mobile": mobile,
         "ssaid": str(row.get("ssaid") or ""),
+        "firebaseUid": str(row.get("firebaseUid") or ""),
+        "displayName": str(row.get("displayName") or ""),
         "createdAt": str(row.get("createdAt") or ""),
         "lastSeenAt": str(row.get("lastSeenAt") or ""),
     }
 
 
-def upsert(mobile: str, ssaid: str, created_at: str | None = None) -> None:
+def upsert(
+    mobile: str,
+    ssaid: str,
+    firebase_uid: str = "",
+    display_name: str = "",
+    created_at: str | None = None,
+) -> None:
     now = utc_now()
     created = created_at or now
     if _use_supabase():
         existing = _supabase_get(mobile)
         if existing:
+            patch = {"ssaid": ssaid, "last_seen_at": now}
+            if firebase_uid:
+                patch["firebase_uid"] = firebase_uid
+            if display_name and not existing.get("display_name"):
+                patch["display_name"] = display_name
             q = urllib.parse.urlencode({"mobile": f"eq.{mobile}"})
-            _supabase_request("PATCH", f"{SUPABASE_TABLE}?{q}", {"ssaid": ssaid, "last_seen_at": now})
+            _supabase_request("PATCH", f"{SUPABASE_TABLE}?{q}", patch)
             return
         _supabase_request(
             "POST",
             SUPABASE_TABLE,
-            {"mobile": mobile, "ssaid": ssaid, "created_at": created, "last_seen_at": now},
+            {
+                "mobile": mobile,
+                "ssaid": ssaid,
+                "firebase_uid": firebase_uid,
+                "display_name": display_name,
+                "created_at": created,
+                "last_seen_at": now,
+            },
         )
         return
     with _file_lock:
         data = _file_load()
         prev = data.get(mobile) if isinstance(data.get(mobile), dict) else {}
+        stored_name = str(prev.get("displayName") or "") or display_name
+        stored_uid = str(prev.get("firebaseUid") or "") or firebase_uid
         data[mobile] = {
             "ssaid": ssaid,
+            "firebaseUid": stored_uid,
+            "displayName": stored_name,
             "createdAt": str(prev.get("createdAt") or created),
             "lastSeenAt": now,
         }
         _file_save(data)
 
 
-def register(mobile_raw: str, ssaid_raw: str) -> dict:
-    mobile = normalize_mobile(mobile_raw)
+def _claims_from_token(id_token: str) -> dict:
+    import firebase_auth as fb
+
+    try:
+        claims = fb.verify_id_token(id_token)
+    except fb.FirebaseTokenError as exc:
+        raise DeviceAuthError(str(exc), exc.status) from exc
+    mobile = normalize_mobile(str(claims.get("phone") or ""))
+    uid = str(claims.get("uid") or "")
+    if not uid:
+        raise DeviceAuthError("Invalid Firebase user", 401)
+    return {"mobile": mobile, "uid": uid}
+
+
+def register(id_token: str, ssaid_raw: str, display_name_raw: str) -> dict:
+    claims = _claims_from_token(id_token)
+    mobile = claims["mobile"]
+    uid = claims["uid"]
     ssaid = normalize_ssaid(ssaid_raw)
+    display_name = normalize_display_name(display_name_raw)
     existing = lookup(mobile)
     if existing and existing.get("ssaid") and existing["ssaid"] != ssaid:
         raise DeviceAuthError(
             "This mobile number is already registered on another device.",
             409,
         )
-    upsert(mobile, ssaid, existing.get("createdAt") if existing else None)
-    return {"ok": True, "mobile": mobile, "otp": make_otp(mobile, ssaid)}
+    upsert(
+        mobile,
+        ssaid,
+        firebase_uid=uid,
+        display_name=display_name,
+        created_at=existing.get("createdAt") if existing else None,
+    )
+    stored = lookup(mobile) or {}
+    return {
+        "ok": True,
+        "mobile": mobile,
+        "displayName": stored.get("displayName") or display_name,
+    }
 
 
-def verify(mobile_raw: str, ssaid_raw: str) -> dict:
-    mobile = normalize_mobile(mobile_raw)
+def verify(id_token: str, ssaid_raw: str) -> dict:
+    claims = _claims_from_token(id_token)
+    mobile = claims["mobile"]
     ssaid = normalize_ssaid(ssaid_raw)
     existing = lookup(mobile)
     if not existing or existing.get("ssaid") != ssaid:
@@ -215,5 +266,15 @@ def verify(mobile_raw: str, ssaid_raw: str) -> dict:
             "This phone does not match the registered device. The app cannot continue.",
             403,
         )
-    upsert(mobile, ssaid, existing.get("createdAt"))
-    return {"ok": True, "mobile": mobile}
+    upsert(
+        mobile,
+        ssaid,
+        firebase_uid=claims["uid"],
+        display_name=str(existing.get("displayName") or ""),
+        created_at=existing.get("createdAt"),
+    )
+    return {
+        "ok": True,
+        "mobile": mobile,
+        "displayName": str(existing.get("displayName") or ""),
+    }

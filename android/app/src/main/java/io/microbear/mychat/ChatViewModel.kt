@@ -1,5 +1,6 @@
 package io.microbear.mychat
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.media.MediaMetadataRetriever
@@ -48,7 +49,6 @@ data class ChatUiState(
     val authPhase: String = "checking",
     val mobileInput: String = "",
     val otp: String = "",
-    val showOtp: Boolean = false,
     val fatalError: String? = null,
     val authorId: String = "",
     val joined: Boolean = false,
@@ -107,6 +107,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     )
         private set
 
+    private val phoneAuth = PhoneAuthHelper(
+        onCodeSent = {
+            ui = ui.copy(authPhase = "sms", busy = false, error = null)
+        },
+        onIdToken = { token -> completeSmsAuth(token) },
+        onError = { msg ->
+            ui = ui.copy(busy = false, error = msg)
+        },
+    )
+
     init {
         bootstrapDevice()
     }
@@ -123,6 +133,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun onMobile(value: String) {
         ui = ui.copy(mobileInput = value.filter { it.isDigit() || it == '+' }.take(16), error = null)
     }
+    fun onOtp(value: String) { ui = ui.copy(otp = value.filter { it.isDigit() }.take(8), error = null) }
     fun onDraft(value: String) { ui = ui.copy(draft = value.take(2000)) }
 
     fun bootstrapDevice() {
@@ -132,58 +143,96 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         ui = ui.copy(authPhase = "checking", busy = true, error = null, fatalError = null)
-        viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) { api.verifyDevice(DEFAULT_SERVER, mobile, deviceSsaid()) }
-                ui = ui.copy(authPhase = "ok", busy = false, error = null)
-            } catch (e: Exception) {
-                val msg = e.message ?: "Could not verify this device"
-                val mismatch = msg.contains("does not match", ignoreCase = true) ||
-                    msg.contains("already registered", ignoreCase = true)
-                if (mismatch) {
-                    ui = ui.copy(authPhase = "blocked", busy = false, fatalError = msg, error = msg)
-                } else {
-                    ui = ui.copy(authPhase = "checking", busy = false, error = msg)
+        phoneAuth.currentIdToken { token ->
+            viewModelScope.launch {
+                if (token.isNullOrBlank()) {
+                    ui = ui.copy(
+                        authPhase = "register",
+                        busy = false,
+                        error = "Confirm your number with the SMS code.",
+                    )
+                    return@launch
+                }
+                try {
+                    val res = withContext(Dispatchers.IO) {
+                        api.verifyDevice(DEFAULT_SERVER, token, deviceSsaid())
+                    }
+                    val name = res.displayName?.takeIf { it.isNotBlank() } ?: ui.displayName
+                    if (name.isNotBlank()) prefs.edit().putString("name", name).apply()
+                    ui = ui.copy(authPhase = "ok", busy = false, error = null, displayName = name)
+                } catch (e: Exception) {
+                    applyDeviceError(e.message ?: "Could not verify this device")
                 }
             }
         }
     }
 
-    fun registerDevice() {
+    fun sendSms(activity: Activity) {
+        val name = ui.displayName.trim()
+        if (name.length < 2) {
+            ui = ui.copy(error = "Enter a user name (at least 2 characters).")
+            return
+        }
         val mobile = ui.mobileInput.trim()
         if (mobile.filter { it.isDigit() }.length < 10) {
             ui = ui.copy(error = "Enter a valid mobile number.")
             return
         }
         ui = ui.copy(busy = true, error = null)
+        phoneAuth.sendSms(activity, toE164(mobile))
+    }
+
+    fun confirmSms() {
+        ui = ui.copy(busy = true, error = null)
+        phoneAuth.confirmSms(ui.otp)
+    }
+
+    private fun completeSmsAuth(idToken: String) {
         viewModelScope.launch {
+            ui = ui.copy(busy = true, error = null)
             try {
+                val name = ui.displayName.trim()
                 val res = withContext(Dispatchers.IO) {
-                    api.registerDevice(DEFAULT_SERVER, mobile, deviceSsaid())
+                    api.registerDevice(DEFAULT_SERVER, idToken, deviceSsaid(), name)
                 }
-                val otp = res.otp?.takeIf { it.isNotBlank() } ?: error("Server did not return an OTP")
+                val storedName = res.displayName?.takeIf { it.isNotBlank() } ?: name
+                val mobile = (res.mobile ?: ui.mobileInput).filter { it.isDigit() }.let { digits ->
+                    if (digits.startsWith("91") && digits.length == 12) digits.drop(2) else digits
+                }
+                prefs.edit()
+                    .putString("mobile", mobile)
+                    .putString("name", storedName)
+                    .apply()
                 ui = ui.copy(
+                    authPhase = "ok",
                     busy = false,
-                    otp = otp,
-                    showOtp = true,
-                    mobileInput = res.mobile ?: mobile,
+                    error = null,
+                    otp = "",
+                    displayName = storedName,
+                    mobileInput = mobile,
                 )
             } catch (e: Exception) {
-                ui = ui.copy(busy = false, error = e.message ?: "Could not register this phone")
+                applyDeviceError(e.message ?: "Could not register this phone")
             }
         }
     }
 
-    fun confirmOtp() {
-        val mobile = ui.mobileInput.filter { it.isDigit() }.let { digits ->
-            if (digits.startsWith("91") && digits.length == 12) digits.drop(2) else digits
+    private fun applyDeviceError(msg: String) {
+        val mismatch = msg.contains("does not match", ignoreCase = true) ||
+            msg.contains("already registered", ignoreCase = true)
+        if (mismatch) {
+            ui = ui.copy(authPhase = "blocked", busy = false, fatalError = msg, error = msg)
+        } else {
+            ui = ui.copy(busy = false, error = msg)
         }
-        prefs.edit().putString("mobile", mobile).apply()
-        ui = ui.copy(showOtp = false, authPhase = "ok", error = null)
     }
 
     fun join() {
-        val name = ui.displayName.trim().ifEmpty { "Guest" }
+        val name = ui.displayName.trim()
+        if (name.length < 2) {
+            ui = ui.copy(error = "Your user name is missing. Close the app and register again.")
+            return
+        }
         val room = RoomIds.normalize(ui.roomInput)
         val server = DEFAULT_SERVER
         prefs.edit()

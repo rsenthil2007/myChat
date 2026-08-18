@@ -7,6 +7,7 @@ data class DeviceAuthResponse(
     val ok: Boolean = false,
     val otp: String? = null,
     val mobile: String? = null,
+    val displayName: String? = null,
     val error: String? = null,
 )
 
