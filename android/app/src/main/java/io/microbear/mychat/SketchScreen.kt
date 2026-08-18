@@ -59,10 +59,10 @@ private val PenColors = listOf(
 fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<SketchStroke>) -> Unit) {
     var colorHex by remember { mutableStateOf("#0f172a") }
     var sizeSlider by remember { mutableFloatStateOf(4f) }
-    val size = sizeSlider * (canvasSize.width.toFloat().coerceAtLeast(300f) / 300f)
     var strokes by remember { mutableStateOf(listOf<SketchStroke>()) }
     var current by remember { mutableStateOf<List<Float>>(emptyList()) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val size = sizeSlider * (canvasSize.width.toFloat().coerceAtLeast(300f) / 300f)
     val colorMap = PenColors.toMap()
 
     Column(
