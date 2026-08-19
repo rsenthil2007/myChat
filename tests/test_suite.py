@@ -89,7 +89,11 @@ class DeviceAccountsTest(unittest.TestCase):
         self._old_url = os.environ.pop("SUPABASE_URL", None)
         self._old_key = os.environ.pop("SUPABASE_SERVICE_KEY", None)
         self._old_test = os.environ.get("MYCHAT_ALLOW_TEST_TOKENS")
+        self._old_admins = os.environ.pop("MYCHAT_ADMIN_MOBILES", None)
+        self._old_web = os.environ.get("MYCHAT_ADMIN_WEB")
         os.environ["MYCHAT_ALLOW_TEST_TOKENS"] = "1"
+        os.environ["MYCHAT_ADMIN_WEB"] = "1"
+        os.environ["MYCHAT_ADMIN_WEB_OTP"] = "246810"
 
     def tearDown(self):
         if self.path.exists():
@@ -106,6 +110,14 @@ class DeviceAccountsTest(unittest.TestCase):
             os.environ.pop("MYCHAT_ALLOW_TEST_TOKENS", None)
         else:
             os.environ["MYCHAT_ALLOW_TEST_TOKENS"] = self._old_test
+        if self._old_admins is None:
+            os.environ.pop("MYCHAT_ADMIN_MOBILES", None)
+        else:
+            os.environ["MYCHAT_ADMIN_MOBILES"] = self._old_admins
+        if self._old_web is None:
+            os.environ.pop("MYCHAT_ADMIN_WEB", None)
+        else:
+            os.environ["MYCHAT_ADMIN_WEB"] = self._old_web
 
     def test_normalize_strips_country_code(self):
         self.assertEqual(devices.normalize_mobile("+91 98765 43210"), "9876543210")
@@ -141,6 +153,35 @@ class DeviceAccountsTest(unittest.TestCase):
         result = devices.register(token, "not-a-hex-id", "Bob")
         self.assertTrue(result["ok"])
         devices.verify(token, "not-a-hex-id")
+
+    def test_request_waits_then_admin_admits(self):
+        os.environ["MYCHAT_ADMIN_MOBILES"] = "9990001111"
+        admin = devices.request_access("9990001111", "aaaaaaaaaaaaaaaa", "Boss")
+        self.assertEqual(admin["status"], "admitted")
+        self.assertTrue(admin["isAdmin"])
+        pending = devices.request_access("8880002222", "bbbbbbbbbbbbbbbb", "Ada")
+        self.assertEqual(pending["status"], "pending")
+        checked = devices.check("8880002222", "bbbbbbbbbbbbbbbb")
+        self.assertEqual(checked["status"], "pending")
+        session = devices.admin_web_login("9990001111", "246810")
+        self.assertTrue(session["token"])
+        devices.parse_admin_token(session["token"])
+        rows = devices.list_requests()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["displayName"], "Ada")
+        admitted = devices.admit("8880002222")
+        self.assertEqual(admitted["status"], "admitted")
+        self.assertEqual(devices.check("8880002222", "bbbbbbbbbbbbbbbb")["status"], "admitted")
+
+    def test_legacy_devices_json_row_is_admin(self):
+        devices.DEVICES_PATH.write_text(
+            json.dumps({"9111111111": {"ssaid": "cccccccccccccccc", "displayName": "Sen"}}),
+            encoding="utf-8",
+        )
+        row = devices.lookup("9111111111")
+        self.assertEqual(row["status"], "admitted")
+        self.assertTrue(row["isAdmin"])
+        self.assertTrue(devices.is_admin("9111111111"))
 
 
 class RoomFileIsolationTest(unittest.TestCase):
@@ -233,13 +274,18 @@ class LiveServerTest(unittest.TestCase):
         if self.devfile.exists():
             self.devfile.unlink()
 
-    def _json(self, method: str, path: str, body: dict | None = None):
+    def _json(self, method: str, path: str, body: dict | None = None, token: str | None = None):
         data = None if body is None else json.dumps(body).encode("utf-8")
+        headers = {}
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             self.base + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json"} if body is not None else {},
+            headers=headers,
         )
         with urllib.request.urlopen(req, timeout=5) as res:
             raw = res.read().decode("utf-8")
@@ -295,6 +341,55 @@ class LiveServerTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(req, timeout=5)
         self.assertEqual(ctx.exception.code, 403)
+
+    def test_admin_web_admits_pending_request(self):
+        os.environ["MYCHAT_ADMIN_MOBILES"] = "9990001111"
+        os.environ["MYCHAT_ADMIN_WEB"] = "1"
+        os.environ["MYCHAT_ADMIN_WEB_OTP"] = "246810"
+        status, data = self._json(
+            "POST",
+            "/api/device/request",
+            {"mobile": "9990001111", "ssaid": "aaaaaaaaaaaaaaaa", "displayName": "Boss"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("isAdmin"))
+        status, data = self._json(
+            "POST",
+            "/api/device/request",
+            {"mobile": "8880002222", "ssaid": "bbbbbbbbbbbbbbbb", "displayName": "Ada"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(data.get("status"), "pending")
+        status, login = self._json(
+            "POST",
+            "/api/admin/login",
+            {"mobile": "9990001111", "otp": "246810"},
+        )
+        self.assertEqual(status, 200)
+        token = login["token"]
+        req = urllib.request.Request(
+            self.base + "/api/admin/requests",
+            method="GET",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as res:
+            listed = json.loads(res.read().decode("utf-8"))
+        self.assertEqual(listed["requests"][0]["displayName"], "Ada")
+        status, admitted = self._json(
+            "POST",
+            "/api/admin/admit",
+            {"mobile": "8880002222"},
+            token=token,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(admitted.get("status"), "admitted")
+        status, checked = self._json(
+            "POST",
+            "/api/device/check",
+            {"mobile": "8880002222", "ssaid": "bbbbbbbbbbbbbbbb"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(checked.get("status"), "admitted")
 
     def test_post_get_message(self):
         msg = self._secure_text("hello-api", "suite-a", "A")

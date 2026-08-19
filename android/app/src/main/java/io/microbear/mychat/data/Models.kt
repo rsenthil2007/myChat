@@ -8,6 +8,24 @@ data class DeviceAuthResponse(
     val otp: String? = null,
     val mobile: String? = null,
     val displayName: String? = null,
+    val status: String? = null,
+    val isAdmin: Boolean = false,
+    val token: String? = null,
+    val error: String? = null,
+)
+
+data class AccessRequest(
+    val mobile: String = "",
+    val displayName: String = "",
+    val status: String = "",
+    val isAdmin: Boolean = false,
+    val createdAt: String = "",
+    val ssaidTail: String = "",
+)
+
+data class AdminListResponse(
+    val ok: Boolean = false,
+    val requests: List<AccessRequest> = emptyList(),
     val error: String? = null,
 )
 

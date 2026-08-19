@@ -296,7 +296,7 @@ class Handler(SimpleHTTPRequestHandler):
             allow = "*"
         self.send_header("Access-Control-Allow-Origin", allow)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         if allow != "*":
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Credentials", "true")
@@ -314,13 +314,23 @@ class Handler(SimpleHTTPRequestHandler):
                 200,
                 {
                     "ok": True,
-                    "version": 7,
+                    "version": 8,
                     "sync": "shared",
                     "persistRooms": PERSIST_ROOMS,
                     "secureHint": "Serve this app over HTTPS (nginx/Caddy) for microphone on phones and WebIntoApp",
-                    "features": ["chat", "board", "audio", "pictionary", "deviceAuth", "firebaseSms"],
+                    "features": ["chat", "board", "audio", "pictionary", "deviceAuth", "firebaseSms", "adminAdmit"],
+                    "adminWeb": devices.web_admin_enabled(),
                 },
             )
+            return
+
+        if path in ("/admin", "/admin/"):
+            self.path = "/admin.html"
+            super().do_GET()
+            return
+
+        if path == "/api/admin/requests":
+            self.handle_admin_requests()
             return
 
         if path.startswith("/api/rooms/"):
@@ -353,6 +363,24 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path == "/api/device/verify":
             self.handle_device_verify()
+            return
+        if path == "/api/device/request":
+            self.handle_device_request()
+            return
+        if path == "/api/device/check":
+            self.handle_device_check()
+            return
+        if path == "/api/admin/login":
+            self.handle_admin_login()
+            return
+        if path == "/api/admin/session":
+            self.handle_admin_session()
+            return
+        if path == "/api/admin/admit":
+            self.handle_admin_admit()
+            return
+        if path == "/api/admin/reject":
+            self.handle_admin_reject()
             return
         if len(parts) == 4 and parts[0] == "api" and parts[1] == "rooms" and parts[3] == "messages":
             self.handle_post_message(normalize_room(parts[2]))
@@ -711,6 +739,111 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001
             print(f"device register failed: {exc!r}")
             self.write_json(500, {"ok": False, "error": "Could not register this device. Try again."})
+            return
+        self.write_json(200, result)
+
+    def handle_device_request(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.request_access(
+                str(payload.get("mobile") or ""),
+                str(payload.get("ssaid") or ""),
+                str(payload.get("displayName") or payload.get("userName") or ""),
+            )
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            print(f"device request failed: {exc!r}")
+            self.write_json(500, {"ok": False, "error": "Could not send this request. Try again."})
+            return
+        self.write_json(200, result)
+
+    def handle_device_check(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.check(
+                str(payload.get("mobile") or ""),
+                str(payload.get("ssaid") or ""),
+            )
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001
+            print(f"device check failed: {exc!r}")
+            self.write_json(500, {"ok": False, "error": "Could not check this device. Try again."})
+            return
+        self.write_json(200, result)
+
+    def _require_admin(self) -> str | None:
+        auth = self.headers.get("Authorization") or ""
+        try:
+            return devices.parse_admin_token(auth)
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return None
+
+    def handle_admin_login(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.admin_web_login(
+                str(payload.get("mobile") or ""),
+                str(payload.get("otp") or payload.get("code") or ""),
+            )
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        self.write_json(200, result)
+
+    def handle_admin_session(self) -> None:
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.admin_session_from_device(
+                str(payload.get("mobile") or ""),
+                str(payload.get("ssaid") or ""),
+            )
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        self.write_json(200, result)
+
+    def handle_admin_requests(self) -> None:
+        if self._require_admin() is None:
+            return
+        include_all = "all=1" in (self.path.split("?", 1)[1] if "?" in self.path else "")
+        self.write_json(200, {"ok": True, "requests": devices.list_requests(include_all=include_all)})
+
+    def handle_admin_admit(self) -> None:
+        if self._require_admin() is None:
+            return
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.admit(str(payload.get("mobile") or ""))
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
+            return
+        self.write_json(200, result)
+
+    def handle_admin_reject(self) -> None:
+        if self._require_admin() is None:
+            return
+        payload = self._read_json_body()
+        if payload is None:
+            return
+        try:
+            result = devices.reject(str(payload.get("mobile") or ""))
+        except devices.DeviceAuthError as exc:
+            self.write_json(exc.status, {"ok": False, "error": str(exc)})
             return
         self.write_json(200, result)
 

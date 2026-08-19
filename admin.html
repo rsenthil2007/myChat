@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; form-action 'self'" />
+  <title>myChat admin</title>
+  <style>
+    :root { font-family: "Segoe UI", system-ui, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 28px; margin: 8px 0 6px; }
+    .brand { color: #2dd4bf; font-weight: 600; font-size: 14px; }
+    .muted { color: #94a3b8; font-size: 14px; line-height: 1.45; }
+    label { display: block; margin: 14px 0 6px; color: #94a3b8; font-size: 13px; }
+    input { width: 100%; box-sizing: border-box; padding: 12px 14px; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 16px; }
+    button { cursor: pointer; border: 0; border-radius: 10px; padding: 12px 16px; font-size: 15px; font-weight: 600; }
+    .primary { background: #2dd4bf; color: #0f172a; width: 100%; margin-top: 16px; }
+    .ghost { background: transparent; color: #2dd4bf; }
+    .danger { background: #7f1d1d; color: #fecaca; }
+    .ok { background: #134e4a; color: #99f6e4; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .card { background: #1e293b; border-radius: 14px; padding: 14px 16px; margin: 10px 0; }
+    .err { color: #f87171; margin-top: 12px; }
+    .hidden { display: none; }
+    .warn { background: #422006; color: #fdba74; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="brand">myChat</p>
+    <h1>Admin</h1>
+    <p class="muted">Sign in with the admin mobile number and the test OTP. Disable this page later with <code>MYCHAT_ADMIN_WEB=0</code>.</p>
+    <p class="warn">Test OTP is for initial setup only. Do not leave it enabled on a public site longer than you need.</p>
+
+    <section id="login-panel">
+      <label>Mobile number</label>
+      <input id="mobile" type="tel" inputmode="numeric" autocomplete="tel" placeholder="10-digit number" />
+      <label>OTP</label>
+      <input id="otp" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Test OTP" />
+      <button class="primary" id="login-btn" type="button">Sign in</button>
+      <p class="err hidden" id="login-error"></p>
+    </section>
+
+    <section id="desk" class="hidden">
+      <div class="row">
+        <p class="muted" id="who"></p>
+        <button class="ghost" id="refresh-btn" type="button">Refresh</button>
+        <button class="ghost" id="logout-btn" type="button">Sign out</button>
+      </div>
+      <h2>Pending requests</h2>
+      <div id="list"></div>
+      <p class="err hidden" id="desk-error"></p>
+    </section>
+  </div>
+  <script src="js/admin.js"></script>
+</body>
+</html>

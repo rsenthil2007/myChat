@@ -1,34 +1,49 @@
-# Native myChat (Kotlin) — v0.4.6
+# Native myChat (Kotlin) — v0.4.7
 
 Android client for the same `server.py` rooms as the web app.
 
-**In this version:** sealed **text**, **sketches**, **voice notes**, **clear chat**, a shared **Board** tab, **Firebase SMS** registration, and a **user name** chosen at register time (shown on every message).  
+**In this version:** sealed **text**, **sketches**, **voice notes**, **clear chat**, a shared **Board** tab, a **user name** chosen at request time, and **admin admit** (no paid SMS). Firebase Phone Auth code is still in the repo for later.  
 The board uses a fixed **1280×1600** (4:5) logical canvas. The APK always talks to `https://chat.microbear.in`.
 
-**Not yet:** Pictionary (hidden on the web too), live SSE (the app still polls every 2s), rename user name, web SMS.
+**Not yet:** Pictionary (hidden on the web too), live SSE (the app still polls every 2s), rename user name, paid SMS.
 
 The older WebInto wrap notes stay in `Wrap/`.
 
-## Registration (SMS + user name)
+## Registration (request + admin)
 
 1. First launch asks for a **user name** (at least 2 characters) and a **mobile number**.
-2. Firebase Phone Auth sends a real SMS code. After the code is accepted, the app sends the Firebase ID token, this phone’s SSAID (`Settings.Secure.ANDROID_ID`), and the user name to `POST /api/device/register`.
-3. Later launches reuse the Firebase session and call `POST /api/device/verify` with the ID token + SSAID. A mismatch shows an error and the app closes.
-4. The join screen **locks** the user name. It is stored on the server and used as `authorName` on chat, sketches, voice notes, and board layers. There is no rename UI yet.
+2. The app sends mobile, SSAID, and name to `POST /api/device/request`. New users stay **pending**.
+3. An admin admits or rejects from the **Admin** screen on the admin phone, or from `https://chat.microbear.in/admin`.
+4. After admit, later launches call `POST /api/device/check`. Same mobile + SSAID → in. Mismatch → blocked.
+5. The join screen **locks** the user name. It is used as `authorName` on chat, sketches, voice notes, and board layers.
 
-Existing 0.4.5 installs used an in-app OTP (not SMS). Those users must register again with SMS. Old `devices.json` rows without `firebaseUid` / `displayName` are updated on the first successful SMS register **if the SSAID still matches**.
+Numbers already in `/opt/mychat/data/devices.json` (rows with no `status` field) are treated as **admitted admins**. That is how the first phone on InterServer becomes admin without SMS.
 
-The web client still joins with a typed name and room code (no SMS yet).
+Firebase SMS (`/api/device/register`) is still implemented on the server but the app does not call it while billing is off.
 
-## Firebase Console (required before SMS works)
+The web chat client still joins with a typed name and room code (no device gate).
 
-1. Create a Firebase project and add an Android app with package **`in.microbear.mychat`**.
-2. Enable **Authentication → Sign-in method → Phone**.
-3. Add the **debug SHA-1** (and SHA-256) from the CI keystore below. Without this, SMS will fail on GitHub-built APKs.
-4. Download `google-services.json` and replace `android/app/google-services.json` (the copy in git is a compile placeholder only).
-5. For GitHub Actions, paste the same file into the repo secret **`GOOGLE_SERVICES_JSON`**.
+## Admin
 
-Firebase may require a paid (Blaze) plan for Phone Auth in production.
+On the **admin phone**: Join screen → **Review access requests**, or Chat → **Admin**.
+
+Temporary **web admin** (disable after testing):
+
+1. Open `https://chat.microbear.in/admin`
+2. Enter the admin mobile number and test OTP **`246810`**
+3. Admit or reject pending users
+
+Disable the web page on the VPS:
+
+```
+Environment=MYCHAT_ADMIN_WEB=0
+```
+
+Optional: pin the admin number with `MYCHAT_ADMIN_MOBILES=98XXXXXXXX` and change the OTP with `MYCHAT_ADMIN_WEB_OTP`.
+
+## Firebase Console (SMS later)
+
+SMS remains optional. Package **`in.microbear.mychat`**. Debug SHA-1 / SHA-256 below. Real SMS needs Blaze billing.
 
 ### Debug keystore fingerprints (GitHub APK)
 
@@ -36,6 +51,7 @@ Committed at `android/ci-debug.keystore` (password `android`, alias `androiddebu
 
 - **SHA-1:** `13:F0:29:34:07:10:32:58:1D:A0:24:B4:40:10:EC:E6:19:5E:AB:96`
 - **SHA-256:** `5B:ED:01:8E:61:80:E2:9F:C7:DF:38:B0:E2:25:EE:52:C9:BE:AB:80:EE:AA:7C:3F:29:A1:BC:E0:15:9C:27:78`
+
 
 ## VPS (Firebase Admin)
 

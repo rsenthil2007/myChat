@@ -19,4 +19,10 @@ alter table public.mychat_device_accounts
 alter table public.mychat_device_accounts
   add column if not exists display_name text;
 
+alter table public.mychat_device_accounts
+  add column if not exists status text;
+
+alter table public.mychat_device_accounts
+  add column if not exists is_admin boolean not null default false;
+
 alter table public.mychat_device_accounts enable row level security;

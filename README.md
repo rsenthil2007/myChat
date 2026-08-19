@@ -45,7 +45,10 @@ Env vars (optional):
 | `CORS_ORIGINS` | Comma-separated allowed origins, or `*` (default) |
 | `MYCHAT_HTTP_PORT` | Default `8080` |
 | `MYCHAT_HTTPS_PORT` | Default `8443` (built-in TLS; prefer nginx TLS in production) |
-| `FIREBASE_CREDENTIALS` | Path to Firebase Admin service-account JSON (VPS only; never in the APK) |
+| `FIREBASE_CREDENTIALS` | Path to Firebase Admin service-account JSON (VPS only; unused while SMS is off) |
+| `MYCHAT_ADMIN_MOBILES` | Optional comma-separated admin numbers. If unset, existing `devices.json` rows without `status` are admins |
+| `MYCHAT_ADMIN_WEB` | `1` (default) enables `/admin`. Set `0` to disable the web admin page |
+| `MYCHAT_ADMIN_WEB_OTP` | Test OTP for `/admin` (default `246810`). Change or disable with `MYCHAT_ADMIN_WEB=0` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Same credentials as inline JSON instead of a file |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | Optional; store device accounts in `mychat_device_accounts` |
 
@@ -126,15 +129,14 @@ myChat/
   deploy/mychat.service
   deploy/nginx-mychat.conf
   android/
+  admin.html
   supabase/device_accounts.sql
   data/rooms/
 ```
 
 ## Native Android (Kotlin)
 
-v0.4.6 chat client lives in [`android/`](android/README.md). It seals text, sketches, and voice notes with the same room-code pipe as the browser, registers with **Firebase SMS**, and stamps messages with the user name chosen at registration. Open that folder in Android Studio. Debug APK is built by GitHub Actions (`.github/workflows/android-debug.yml`). WebInto wrap notes remain in `android/Wrap/`.
-
-SMS will not work until you replace `android/app/google-services.json` (and the GitHub secret `GOOGLE_SERVICES_JSON`) with the file from Firebase, add the debug SHA-1 from `android/README.md`, and put a Firebase Admin service account on the VPS. See that README for the exact steps.
+v0.4.7 chat client lives in [`android/`](android/README.md). New phones **request access**; an admin admits them (app **Admin** screen or `https://chat.microbear.in/admin`). Firebase SMS code is still in the repo but unused until billing is on. Debug APK is built by GitHub Actions.
 
 ## Wrap as a mobile app (WebInto.app)
 

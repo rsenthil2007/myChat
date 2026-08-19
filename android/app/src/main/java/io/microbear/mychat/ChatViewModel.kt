@@ -17,6 +17,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.google.gson.JsonObject
+import io.microbear.mychat.data.AccessRequest
 import io.microbear.mychat.data.ChatApi
 import io.microbear.mychat.data.ChatMessage
 import io.microbear.mychat.data.SecurePipe
@@ -71,6 +72,9 @@ data class ChatUiState(
     val boardMineStrokes: List<BoardStroke> = emptyList(),
     val boardDragging: Boolean = false,
     val confirmClearBoard: Boolean = false,
+    val isAdmin: Boolean = false,
+    val showAdmin: Boolean = false,
+    val accessRequests: List<AccessRequest> = emptyList(),
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -78,6 +82,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val api = ChatApi()
     private var pollJob: Job? = null
     private var boardSyncJob: Job? = null
+    private var pendingJob: Job? = null
+    private var adminToken: String = ""
     private var lastBoardStamp = ""
     private val openedCache = java.util.concurrent.ConcurrentHashMap<String, ChatMessage>()
     private var recorder: MediaRecorder? = null
@@ -143,26 +149,159 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         ui = ui.copy(authPhase = "checking", busy = true, error = null, fatalError = null)
-        phoneAuth.currentIdToken { token ->
-            viewModelScope.launch {
-                if (token.isNullOrBlank()) {
-                    ui = ui.copy(
-                        authPhase = "register",
-                        busy = false,
-                        error = "Confirm your number with the SMS code.",
-                    )
-                    return@launch
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.checkDevice(DEFAULT_SERVER, mobile, deviceSsaid())
                 }
+                applyAccount(res, mobile)
+            } catch (e: Exception) {
+                applyDeviceError(e.message ?: "Could not verify this device")
+            }
+        }
+    }
+
+    fun requestAccess() {
+        val name = ui.displayName.trim()
+        if (name.length < 2) {
+            ui = ui.copy(error = "Enter a user name (at least 2 characters).")
+            return
+        }
+        val mobile = digitsMobile(ui.mobileInput)
+        if (mobile.length < 10) {
+            ui = ui.copy(error = "Enter a valid mobile number.")
+            return
+        }
+        ui = ui.copy(busy = true, error = null)
+        viewModelScope.launch {
+            try {
+                val res = withContext(Dispatchers.IO) {
+                    api.requestAccess(DEFAULT_SERVER, mobile, deviceSsaid(), name)
+                }
+                applyAccount(res, res.mobile ?: mobile)
+            } catch (e: Exception) {
+                applyDeviceError(e.message ?: "Could not send this request")
+            }
+        }
+    }
+
+    private fun digitsMobile(raw: String): String {
+        val digits = raw.filter { it.isDigit() }
+        return if (digits.startsWith("91") && digits.length == 12) digits.drop(2) else digits
+    }
+
+    private fun applyAccount(res: io.microbear.mychat.data.DeviceAuthResponse, mobileHint: String) {
+        val name = res.displayName?.takeIf { it.isNotBlank() } ?: ui.displayName
+        val mobile = digitsMobile(res.mobile ?: mobileHint)
+        if (mobile.isNotBlank()) prefs.edit().putString("mobile", mobile).apply()
+        if (name.isNotBlank()) prefs.edit().putString("name", name).apply()
+        val status = res.status.orEmpty().ifBlank { if (res.ok) "admitted" else "pending" }
+        when (status) {
+            "admitted" -> {
+                pendingJob?.cancel()
+                pendingJob = null
+                ui = ui.copy(
+                    authPhase = "ok",
+                    busy = false,
+                    error = null,
+                    displayName = name,
+                    mobileInput = mobile,
+                    isAdmin = res.isAdmin,
+                    showAdmin = false,
+                )
+            }
+            "pending" -> {
+                ui = ui.copy(
+                    authPhase = "pending",
+                    busy = false,
+                    error = null,
+                    displayName = name,
+                    mobileInput = mobile,
+                    isAdmin = false,
+                )
+                startPendingPoll()
+            }
+            "rejected" -> {
+                pendingJob?.cancel()
+                ui = ui.copy(
+                    authPhase = "blocked",
+                    busy = false,
+                    fatalError = "This registration was declined.",
+                    error = "This registration was declined.",
+                )
+            }
+            else -> ui = ui.copy(busy = false, error = "Unexpected account status")
+        }
+    }
+
+    private fun startPendingPoll() {
+        pendingJob?.cancel()
+        pendingJob = viewModelScope.launch {
+            while (isActive && ui.authPhase == "pending") {
+                delay(4000)
+                val mobile = prefs.getString("mobile", "") ?: return@launch
                 try {
                     val res = withContext(Dispatchers.IO) {
-                        api.verifyDevice(DEFAULT_SERVER, token, deviceSsaid())
+                        api.checkDevice(DEFAULT_SERVER, mobile, deviceSsaid())
                     }
-                    val name = res.displayName?.takeIf { it.isNotBlank() } ?: ui.displayName
-                    if (name.isNotBlank()) prefs.edit().putString("name", name).apply()
-                    ui = ui.copy(authPhase = "ok", busy = false, error = null, displayName = name)
-                } catch (e: Exception) {
-                    applyDeviceError(e.message ?: "Could not verify this device")
+                    applyAccount(res, mobile)
+                } catch (_: Exception) {
+                    // Keep waiting; the waiting screen already explains the delay.
                 }
+            }
+        }
+    }
+
+    fun showAdminDesk() {
+        if (!ui.isAdmin) return
+        ui = ui.copy(showAdmin = true, busy = true, error = null)
+        viewModelScope.launch {
+            try {
+                val token = withContext(Dispatchers.IO) {
+                    api.adminSession(DEFAULT_SERVER, digitsMobile(ui.mobileInput), deviceSsaid()).token
+                } ?: error("Could not open admin")
+                adminToken = token
+                val list = withContext(Dispatchers.IO) { api.adminRequests(DEFAULT_SERVER, token) }
+                ui = ui.copy(busy = false, accessRequests = list.requests, error = null)
+            } catch (e: Exception) {
+                ui = ui.copy(busy = false, error = e.message ?: "Could not load requests")
+            }
+        }
+    }
+
+    fun hideAdminDesk() {
+        ui = ui.copy(showAdmin = false, accessRequests = emptyList())
+    }
+
+    fun refreshAdminRequests() {
+        if (adminToken.isBlank()) {
+            showAdminDesk()
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { api.adminRequests(DEFAULT_SERVER, adminToken) }
+                ui = ui.copy(accessRequests = list.requests, error = null)
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not load requests")
+            }
+        }
+    }
+
+    fun admitRequest(mobile: String) = decideRequest(mobile, admit = true)
+    fun rejectRequest(mobile: String) = decideRequest(mobile, admit = false)
+
+    private fun decideRequest(mobile: String, admit: Boolean) {
+        if (adminToken.isBlank()) return
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    if (admit) api.adminAdmit(DEFAULT_SERVER, adminToken, mobile)
+                    else api.adminReject(DEFAULT_SERVER, adminToken, mobile)
+                }
+                refreshAdminRequests()
+            } catch (e: Exception) {
+                ui = ui.copy(error = e.message ?: "Could not update that request")
             }
         }
     }
@@ -219,7 +358,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun applyDeviceError(msg: String) {
         val mismatch = msg.contains("does not match", ignoreCase = true) ||
-            msg.contains("already registered", ignoreCase = true)
+            msg.contains("already registered", ignoreCase = true) ||
+            msg.contains("declined", ignoreCase = true)
         if (mismatch) {
             ui = ui.copy(authPhase = "blocked", busy = false, fatalError = msg, error = msg)
         } else {
@@ -761,6 +901,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         "a_" + UUID.randomUUID().toString().replace("-", "").take(12)
 
     override fun onCleared() {
+        pendingJob?.cancel()
         stopPlayback()
         cancelRecording()
         player.release()

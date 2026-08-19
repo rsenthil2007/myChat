@@ -106,6 +106,31 @@ class ChatApi(
         )
     }
 
+    fun requestAccess(
+        baseUrl: String,
+        mobile: String,
+        ssaid: String,
+        displayName: String,
+    ): DeviceAuthResponse {
+        return postDevice(
+            baseUrl,
+            "/api/device/request",
+            mapOf(
+                "mobile" to mobile,
+                "ssaid" to ssaid,
+                "displayName" to displayName,
+            ),
+        )
+    }
+
+    fun checkDevice(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
+        return postDevice(
+            baseUrl,
+            "/api/device/check",
+            mapOf("mobile" to mobile, "ssaid" to ssaid),
+        )
+    }
+
     fun verifyDevice(baseUrl: String, idToken: String, ssaid: String): DeviceAuthResponse {
         return postDevice(
             baseUrl,
@@ -114,13 +139,46 @@ class ChatApi(
         )
     }
 
+    fun adminSession(baseUrl: String, mobile: String, ssaid: String): DeviceAuthResponse {
+        return postDevice(
+            baseUrl,
+            "/api/admin/session",
+            mapOf("mobile" to mobile, "ssaid" to ssaid),
+        )
+    }
+
+    fun adminRequests(baseUrl: String, token: String): AdminListResponse {
+        val req = Request.Builder()
+            .url(join(baseUrl, "/api/admin/requests"))
+            .header("Authorization", "Bearer $token")
+            .get()
+            .build()
+        client.newCall(req).execute().use { res ->
+            val text = res.body?.string().orEmpty()
+            val parsed = runCatching { gson.fromJson(text, AdminListResponse::class.java) }.getOrNull()
+            if (!res.isSuccessful) error(parsed?.error ?: "Admin ${res.code}: ${text.take(160)}")
+            return parsed ?: error("Empty admin list")
+        }
+    }
+
+    fun adminAdmit(baseUrl: String, token: String, mobile: String): DeviceAuthResponse {
+        return postDevice(baseUrl, "/api/admin/admit", mapOf("mobile" to mobile), token)
+    }
+
+    fun adminReject(baseUrl: String, token: String, mobile: String): DeviceAuthResponse {
+        return postDevice(baseUrl, "/api/admin/reject", mapOf("mobile" to mobile), token)
+    }
+
     private fun postDevice(
         baseUrl: String,
         path: String,
         body: Map<String, String>,
+        token: String? = null,
     ): DeviceAuthResponse {
         val payload = gson.toJson(body).toRequestBody(jsonType)
-        val req = Request.Builder().url(join(baseUrl, path)).post(payload).build()
+        val builder = Request.Builder().url(join(baseUrl, path)).post(payload)
+        if (!token.isNullOrBlank()) builder.header("Authorization", "Bearer $token")
+        val req = builder.build()
         client.newCall(req).execute().use { res ->
             val text = res.body?.string().orEmpty()
             val parsed = runCatching { gson.fromJson(text, DeviceAuthResponse::class.java) }.getOrNull()

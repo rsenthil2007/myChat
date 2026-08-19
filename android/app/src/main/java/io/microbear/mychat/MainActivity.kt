@@ -51,7 +51,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -95,6 +94,7 @@ class MainActivity : ComponentActivity() {
                 val state = vm.ui
                 when {
                     state.authPhase == "blocked" -> DeviceBlockedScreen(state) { finishAffinity() }
+                    state.showAdmin -> AdminScreen(state, vm)
                     state.authPhase != "ok" -> DeviceGateScreen(state, vm)
                     !state.joined -> JoinScreen(state, vm)
                     state.sketching -> SketchScreen(
@@ -222,6 +222,16 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
         ) {
             Text(if (state.busy) "Connecting…" else "Enter room")
         }
+        if (state.isAdmin) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = vm::showAdminDesk,
+                enabled = !state.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Review access requests", color = Teal)
+            }
+        }
         state.error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = Danger, fontSize = 13.sp)
@@ -231,7 +241,6 @@ private fun JoinScreen(state: ChatUiState, vm: ChatViewModel) {
 
 @Composable
 private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
-    val activity = LocalContext.current as ComponentActivity
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Teal,
         unfocusedBorderColor = Mute,
@@ -251,102 +260,141 @@ private fun DeviceGateScreen(state: ChatUiState, vm: ChatViewModel) {
     ) {
         Text("myChat ${BuildConfig.VERSION_NAME}", color = Teal, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
-        if (state.authPhase == "checking") {
-            Text("Checking this device", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Text("Matching your SMS session with this phone’s SSAID.", color = Mute, fontSize = 13.sp)
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = vm::bootstrapDevice,
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
-            ) {
-                Text(if (state.busy) "Checking…" else "Retry")
+        when (state.authPhase) {
+            "checking" -> {
+                Text("Checking this device", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text("Matching your number with this phone’s SSAID.", color = Mute, fontSize = 13.sp)
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = vm::bootstrapDevice,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+                ) {
+                    Text(if (state.busy) "Checking…" else "Retry")
+                }
             }
-        } else {
-            val smsStep = state.authPhase == "sms"
-            Text(
-                if (smsStep) "Enter the SMS code" else "Register this phone",
-                color = Mist,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                if (smsStep) {
-                    "We sent a code to your mobile. Your user name is saved on this phone and shown on every message."
-                } else {
-                    "Choose a user name (it stays on this phone for now) and verify the mobile number with an SMS code. This phone’s SSAID is bound after that."
-                },
-                color = Mute,
-                fontSize = 13.sp,
-            )
-            Spacer(Modifier.height(20.dp))
-            OutlinedTextField(
-                value = state.displayName,
-                onValueChange = vm::onName,
-                enabled = !smsStep,
-                label = { Text("User name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = fieldColors,
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.mobileInput,
-                onValueChange = vm::onMobile,
-                enabled = !smsStep,
-                label = { Text("Mobile number") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = fieldColors,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            )
-            if (smsStep) {
-                Spacer(Modifier.height(12.dp))
+            "pending" -> {
+                Text("Waiting for approval", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Your request for ${state.displayName} (${state.mobileInput}) is with the admin. This screen updates when you are admitted.",
+                    color = Mute,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = vm::bootstrapDevice,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+                ) {
+                    Text(if (state.busy) "Checking…" else "Check again")
+                }
+            }
+            else -> {
+                Text("Request access", color = Mist, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Choose a user name and mobile number. An admin admits this phone (SSAID bound). Your name is shown on every message.",
+                    color = Mute,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(20.dp))
                 OutlinedTextField(
-                    value = state.otp,
-                    onValueChange = vm::onOtp,
-                    label = { Text("SMS code") },
+                    value = state.displayName,
+                    onValueChange = vm::onName,
+                    label = { Text("User name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = fieldColors,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
-            }
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    if (smsStep) vm.confirmSms() else vm.sendSms(activity)
-                },
-                enabled = !state.busy,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
-            ) {
-                Text(
-                    when {
-                        state.busy && smsStep -> "Checking code…"
-                        state.busy -> "Sending SMS…"
-                        smsStep -> "Confirm code"
-                        else -> "Send SMS code"
-                    },
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = state.mobileInput,
+                    onValueChange = vm::onMobile,
+                    label = { Text("Mobile number") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = fieldColors,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 )
-            }
-            if (smsStep) {
-                Spacer(Modifier.height(8.dp))
-                TextButton(
-                    onClick = { vm.sendSms(activity) },
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = vm::requestAccess,
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
                 ) {
-                    Text("Resend code", color = Teal)
+                    Text(if (state.busy) "Sending…" else "Request access")
                 }
             }
         }
         state.error?.let {
             Spacer(Modifier.height(12.dp))
             Text(it, color = Danger, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun AdminScreen(state: ChatUiState, vm: ChatViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Slate)
+            .imePadding()
+            .displayCutoutPadding()
+            .padding(20.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("myChat ${BuildConfig.VERSION_NAME}", color = Teal, fontSize = 13.sp)
+                Text("Access requests", color = Mist, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            }
+            TextButton(onClick = vm::hideAdminDesk) { Text("Back", color = Teal) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Admit or reject phones waiting to join. Only this admin device can open this screen.", color = Mute, fontSize = 13.sp)
+        Spacer(Modifier.height(12.dp))
+        Button(
+            onClick = vm::refreshAdminRequests,
+            enabled = !state.busy,
+            colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+        ) { Text("Refresh") }
+        state.error?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = Danger, fontSize = 13.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+        if (state.accessRequests.isEmpty()) {
+            Text("No pending requests.", color = Mute, fontSize = 14.sp)
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(state.accessRequests, key = { it.mobile }) { row ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Panel, RoundedCornerShape(14.dp))
+                            .padding(14.dp),
+                    ) {
+                        Text(row.displayName.ifBlank { "(no name)" }, color = Mist, fontWeight = FontWeight.SemiBold)
+                        Text("${row.mobile} · device …${row.ssaidTail}", color = Mute, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.admitRequest(row.mobile) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Teal, contentColor = Slate),
+                            ) { Text("Admit") }
+                            Button(
+                                onClick = { vm.rejectRequest(row.mobile) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Danger, contentColor = Slate),
+                            ) { Text("Reject") }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -408,6 +456,9 @@ private fun ChatScreen(state: ChatUiState, vm: ChatViewModel, onMic: () -> Unit)
             }
             IconButton(onClick = vm::askClear, enabled = !state.busy) {
                 Icon(Icons.Filled.Delete, contentDescription = "Clear chat", tint = Mute)
+            }
+            if (state.isAdmin) {
+                TextButton(onClick = vm::showAdminDesk) { Text("Admin", color = Teal) }
             }
             TextButton(onClick = vm::leave) { Text("Leave", color = Teal) }
         }

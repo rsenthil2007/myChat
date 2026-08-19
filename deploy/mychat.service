@@ -16,6 +16,12 @@ Environment=CORS_ORIGINS=*
 # Copy the Firebase Admin JSON to /opt/mychat/data/firebase-service-account.json
 # (never commit it). Uncomment after the file is in place:
 # Environment=FIREBASE_CREDENTIALS=/opt/mychat/data/firebase-service-account.json
+# Existing devices.json rows (no status field) are admitted admins.
+# Optional: pin the admin number explicitly.
+# Environment=MYCHAT_ADMIN_MOBILES=98XXXXXXXX
+# Temporary web admin at /admin (disable after testing):
+Environment=MYCHAT_ADMIN_WEB=1
+Environment=MYCHAT_ADMIN_WEB_OTP=246810
 ExecStart=/opt/mychat/.venv/bin/python /opt/mychat/server.py
 Restart=on-failure
 RestartSec=2
