@@ -1,4 +1,4 @@
-# Native myChat (Kotlin) — v0.4.8
+# Native myChat (Kotlin) — v0.4.9
 
 Android client for the same `server.py` rooms as the web app.
 

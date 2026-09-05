@@ -830,6 +830,29 @@ class WhiteboardTest(unittest.TestCase):
         )
         self.assertAlmostEqual(room["whiteboard"]["layers"][0]["strokes"][0]["s"], 96)
 
+    def test_slider_stroke_size_is_stored_unchanged(self):
+        room = wb.join_board(self.room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "s": 4, "p": [10, 20, 30, 40, 50, 60]}],
+        )
+        self.assertEqual(room["whiteboard"]["layers"][0]["strokes"][0]["s"], 4)
+
+    def test_long_stroke_is_accepted(self):
+        room = wb.join_board(self.room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        pts = [float(i) for i in range(5000)]
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "s": 8, "p": pts}],
+        )
+        self.assertEqual(len(room["whiteboard"]["layers"][0]["strokes"][0]["p"]), 5000)
+
     def test_board_upgrades_old_16x9_size(self):
         room = {
             "whiteboard": {"w": 1280, "h": 720, "layers": []},

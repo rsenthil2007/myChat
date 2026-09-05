@@ -8,6 +8,7 @@ const Whiteboard = (() => {
   let syncTimer = 0;
   let lastStamp = "";
   let drawingBusy = false;
+  let syncSeq = 0;
   let activeColor = "#0f172a";
   let joined = false;
 
@@ -309,11 +310,18 @@ const Whiteboard = (() => {
       resizeBg();
       if (minePad && !drawingBusy) {
         const mine = myLayer(state);
-        minePad.loadDrawing({
-          w: lw,
-          h: lh,
-          strokes: mine ? mine.strokes || [] : []
-        });
+        const serverN = mine && mine.strokes ? mine.strokes.length : 0;
+        const localN = minePad.strokeCount ? minePad.strokeCount() : 0;
+        if (localN > serverN) {
+          drawingBusy = true;
+          queueStrokeSync(minePad.getDrawingPayload());
+        } else {
+          minePad.loadDrawing({
+            w: lw,
+            h: lh,
+            strokes: mine ? mine.strokes || [] : []
+          });
+        }
       }
     }
 
@@ -348,19 +356,22 @@ const Whiteboard = (() => {
 
   function queueStrokeSync(drawing) {
     if (!session) return;
+    const seq = ++syncSeq;
     window.clearTimeout(syncTimer);
     syncTimer = window.setTimeout(async () => {
       try {
+        const payload = drawing || (minePad ? minePad.getDrawingPayload() : null);
         const data = await api("stroke", {
           authorId: session.authorId,
           authorName: session.authorName,
-          drawing: drawing || minePad.getDrawingPayload()
+          drawing: payload
         });
+        if (seq !== syncSeq) return;
         drawingBusy = false;
         joined = true;
         applyState(data.whiteboard);
       } catch (err) {
-        console.warn(err);
+        if (seq !== syncSeq) return;
         drawingBusy = false;
         if (err && err.message) alert(err.message);
       }

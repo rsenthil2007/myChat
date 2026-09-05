@@ -82,6 +82,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val api = ChatApi()
     private var pollJob: Job? = null
     private var boardSyncJob: Job? = null
+    private var boardSyncEpoch = 0L
+    private val sendQueue = ArrayDeque<Triple<String, String?, () -> SecurePipe.Envelope>>()
     private var pendingJob: Job? = null
     private var adminToken: String = ""
     private var lastBoardStamp = ""
@@ -401,6 +403,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 applyWhiteboard(board, force = true)
                 startPolling()
+                joinBoard()
             } catch (e: Exception) {
                 ui = ui.copy(
                     busy = false,
@@ -419,6 +422,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         pollJob = null
         boardSyncJob?.cancel()
         boardSyncJob = null
+        boardSyncEpoch++
+        sendQueue.clear()
         lastBoardStamp = ""
         openedCache.clear()
         SecurePipe.clearKeyCache()
@@ -533,9 +538,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private fun queueBoardSync(immediate: Boolean = false) {
+        val epoch = ++boardSyncEpoch
         boardSyncJob?.cancel()
         boardSyncJob = viewModelScope.launch {
             if (!immediate) delay(220)
+            if (epoch != boardSyncEpoch) return@launch
             val (w, h) = boardLogicalSize(ui.board)
             val server = ui.serverUrl
             val roomId = ui.roomId
@@ -550,9 +557,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val res = withContext(Dispatchers.IO) {
                     api.whiteboardAction(server, roomId, "stroke", body)
                 }
+                if (epoch != boardSyncEpoch) return@launch
                 ui = ui.copy(boardJoined = true)
                 applyWhiteboard(res.whiteboard, force = true)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (epoch != boardSyncEpoch) return@launch
                 ui = ui.copy(error = e.message ?: "Could not sync the board")
             }
         }
@@ -567,6 +578,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (ui.boardDragging && !force) return
         lastBoardStamp = stamp
         val mine = board.layers.find { it.authorId == ui.authorId }
+        val serverCount = mine?.strokes?.size ?: 0
         val nextMine = if (force && !ui.boardDragging) {
             mine?.strokes?.map { it.toStroke() } ?: emptyList()
         } else {
@@ -578,6 +590,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             boardColor = mine?.assignedColor?.ifBlank { ui.boardColor } ?: ui.boardColor,
             boardMineStrokes = nextMine,
         )
+        if (!force && !ui.boardDragging && nextMine.size > serverCount) {
+            queueBoardSync()
+        }
     }
 
     fun onMicDenied() {
@@ -586,13 +601,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun send() {
         val text = ui.draft.trim()
-        if (!ui.joined || text.isEmpty() || ui.busy) return
+        if (!ui.joined || text.isEmpty()) return
         ui = ui.copy(draft = "")
-        postSecure("text", restoreDraft = text) { SecurePipe.sealText(text, ui.roomId) }
+        enqueueSecure("text", text) { SecurePipe.sealText(text, ui.roomId) }
     }
 
     fun sendSketch(width: Int, height: Int, strokes: List<SketchStroke>) {
-        if (!ui.joined || ui.busy || strokes.isEmpty()) return
+        if (!ui.joined || strokes.isEmpty()) return
         val payload = mapOf(
             "w" to width,
             "h" to height,
@@ -601,7 +616,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             },
         )
         ui = ui.copy(sketching = false)
-        postSecure("drawing") { SecurePipe.sealJson(payload, ui.roomId) }
+        enqueueSecure("drawing", null) { SecurePipe.sealJson(payload, ui.roomId) }
     }
 
     fun startRecording() {
@@ -659,7 +674,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val bytes = file.readBytes()
         file.delete()
         val b64 = Base64.getEncoder().encodeToString(bytes)
-        postSecure("audio") {
+        enqueueSecure("audio", null) {
             SecurePipe.sealJson(mapOf("mime" to "audio/mp4", "audio" to b64), ui.roomId)
         }
     }
@@ -710,6 +725,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun enqueueSecure(type: String, restoreDraft: String?, build: () -> SecurePipe.Envelope) {
+        sendQueue.addLast(Triple(type, restoreDraft, build))
+        pumpSendQueue()
+    }
+
+    private fun pumpSendQueue() {
+        if (ui.busy || sendQueue.isEmpty()) return
+        val (type, restore, build) = sendQueue.removeFirst()
+        postSecure(type, restore, build)
+    }
+
     private fun postSecure(type: String, restoreDraft: String? = null, build: () -> SecurePipe.Envelope) {
         val roomId = ui.roomId
         val server = ui.serverUrl
@@ -732,6 +758,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     error = e.message ?: "Send failed",
                 )
             }
+            pumpSendQueue()
         }
     }
 

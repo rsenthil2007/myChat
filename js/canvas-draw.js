@@ -15,19 +15,20 @@ const CanvasDraw = (() => {
     return Math.max(1, ctx.canvas.width / scale);
   }
 
-  function strokeViewWidth(ctx, raw) {
-    const sz = Number(raw) || 4;
-    const canvasW = paintCanvasWidth(ctx);
-    // Shared board is 1280 wide; slider values (2–24) must not stay 1px after CSS scale.
-    if (sz <= 24 && canvasW >= 1200) return sz * (canvasW / 300);
-    return sz;
+  function strokePaintWidth(stored, paintW) {
+    const sz = Number(stored) || 4;
+    const w = Math.max(1, Number(paintW) || 1);
+    // Shared 1280 board: slider 2–24 is sketch thickness, not 1280-space pixels.
+    // Chat sketches already store pixel widths on a ~300–800 canvas — leave those.
+    if (sz <= 24 && w >= 1200) return Math.max(1.5, sz * (w / 300));
+    return Math.max(1.5, sz);
   }
 
   function paintOneStroke(ctx, stroke) {
     const type = stroke.type || stroke.t || "pen";
     const pts = stroke.points || stroke.p || [];
     const col = stroke.color || stroke.c || "#0f172a";
-    const sz = strokeViewWidth(ctx, stroke.size || stroke.s || 4);
+    const sz = strokePaintWidth(stroke.size || stroke.s || 4, paintCanvasWidth(ctx));
 
     if (type === "text") {
       const text = String(stroke.text || stroke.tx || "").slice(0, 80);
@@ -117,7 +118,7 @@ const CanvasDraw = (() => {
       return;
     }
 
-    // pen / erase freehand
+    // pen / erase freehand — round-capped segments, same as Android SketchScreen
     if (pts.length === 2) {
       ctx.beginPath();
       ctx.arc(pts[0], pts[1], ctx.lineWidth / 2, 0, Math.PI * 2);
@@ -127,7 +128,9 @@ const CanvasDraw = (() => {
     }
     ctx.beginPath();
     ctx.moveTo(pts[0], pts[1]);
-    for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+    for (let i = 2; i < pts.length; i += 2) {
+      ctx.lineTo(pts[i], pts[i + 1]);
+    }
     ctx.stroke();
     ctx.restore();
   }

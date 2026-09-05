@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 
 MAX_LAYERS = 24
 MAX_STROKES_PER_LAYER = 400
-# Sketch-style sizes map into logical space (slider 24 on 1280 ≈ 102).
+MAX_POINTS_PER_STROKE = 12000
+# Slider values 2–24 are on-screen thickness (same as the sketch pad). Clients
+# map them into their paint space; the server stores `s` unchanged.
 MAX_PEN_SIZE = 128
 # RGB Euclidean distance under this counts as "same" color across members
 COLOR_NEAR_THRESHOLD = 48
@@ -263,7 +265,7 @@ def _normalize_strokes(raw, board: dict, author_id: str) -> list:
         min_pts = 4 if kind in ("line", "arrow", "rect", "circle", "oval") else 2
         if len(pts) < min_pts:
             continue
-        if len(pts) > 4000:
+        if len(pts) > MAX_POINTS_PER_STROKE:
             raise ValueError("Stroke too long")
         color = normalize_hex(item.get("c") or item.get("color"))
         if kind != "erase" and color_taken_by_others(board, author_id, color):

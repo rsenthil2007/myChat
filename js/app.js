@@ -390,6 +390,8 @@
       els.textInput.value = "";
       autosize();
       await refresh();
+    } catch (err) {
+      alert("Could not send: " + ((err && err.message) || "network error"));
     } finally {
       sending = false;
       els.sendBtn.disabled = false;
@@ -413,6 +415,8 @@
       await Storage.appendMessage(session.roomId, msg);
       show("chat");
       await refresh();
+    } catch (err) {
+      alert("Could not send drawing: " + ((err && err.message) || "network error"));
     } finally {
       sending = false;
       els.drawSendBtn.disabled = false;

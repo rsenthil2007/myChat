@@ -84,7 +84,7 @@ const Storage = (() => {
       useApi = false;
       return false;
     }
-    if (useApi !== null) return useApi;
+    if (useApi === true) return true;
     try {
       const res = await fetch(api("/api/health"), { cache: "no-store" });
       useApi = res.ok;
@@ -120,26 +120,30 @@ const Storage = (() => {
   async function appendMessage(roomId, message) {
     const id = normalizeRoom(roomId);
 
-    if (await probeApi()) {
-      try {
-        const res = await fetch(roomsUrl(id, "/messages"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(message)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          saveLocal(data);
-          return data;
-        }
-      } catch {
-        /* fall through to local */
-      }
+    if (!(await probeApi())) {
+      throw new Error("Not connected to the chat server");
     }
 
-    const room = loadLocal(id);
-    room.messages.push(message);
-    return saveLocal(room);
+    const res = await fetch(roomsUrl(id, "/messages"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(message)
+    });
+    if (!res.ok) {
+      useApi = null;
+      const text = await res.text().catch(() => "");
+      let hint = "Could not send (HTTP " + res.status + ")";
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && parsed.error) hint = parsed.error;
+      } catch {
+        /* keep hint */
+      }
+      throw new Error(hint);
+    }
+    const data = await res.json();
+    saveLocal(data);
+    return data;
   }
 
   async function clearRoom(roomId) {
