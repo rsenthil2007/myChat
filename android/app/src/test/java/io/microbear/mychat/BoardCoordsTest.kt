@@ -39,14 +39,17 @@ class BoardCoordsTest {
     }
 
     @Test
-    fun toLogicalPenSizeKeepsSketchScreenThickness() {
+    fun strokeViewPenSizeDoesNotShrinkSliderWidth() {
         val viewW = 360f
-        val slider = 4f
-        val viewSize = sketchViewPenSize(slider, viewW)
-        val logical = toLogicalPenSize(slider, viewW, 1280)
-        val drawnBack = logical * viewW / 1280f
-        assertEquals(viewSize, drawnBack, 0.02f)
-        assertEquals(4f * 360f / 300f, viewSize, 0.01f)
+        assertEquals(4f * 360f / 300f, strokeViewPenSize(4f, viewW, 1280), 0.01f)
+        assertEquals(12f * 360f / 300f, strokeViewPenSize(12f, viewW, 1280), 0.01f)
+    }
+
+    @Test
+    fun strokeViewPenSizeKeepsLegacyLogicalWidths() {
+        val viewW = 360f
+        val logical = 51.2f
+        assertEquals(logical * viewW / 1280f, strokeViewPenSize(logical, viewW, 1280), 0.02f)
     }
 
     @Test

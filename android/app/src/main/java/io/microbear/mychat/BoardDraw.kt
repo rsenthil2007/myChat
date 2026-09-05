@@ -56,13 +56,18 @@ fun DrawScope.paintBoardStrokes(
 ) {
     val sx = if (srcW > 0) size.width / srcW else 1f
     val sy = if (srcH > 0) size.height / srcH else 1f
-    strokes.forEach { paintBoardStroke(it, sx, sy) }
+    strokes.forEach { paintBoardStroke(it, sx, sy, srcW) }
 }
 
-fun DrawScope.paintBoardStroke(stroke: BoardStroke, sx: Float = 1f, sy: Float = 1f) {
+fun DrawScope.paintBoardStroke(
+    stroke: BoardStroke,
+    sx: Float = 1f,
+    sy: Float = 1f,
+    srcW: Int = 0,
+) {
     val pts = stroke.points
     val col = parseHexColor(stroke.color)
-    val sz = max(1.5f, stroke.size * min(sx, sy))
+    val sz = strokeViewPenSize(stroke.size, size.width, if (srcW > 0) srcW else BOARD_LOGICAL_W)
     if (stroke.type == "text") {
         if (stroke.text.isBlank() || pts.size < 2) return
         val x = pts[0] * sx

@@ -9,11 +9,25 @@ const CanvasDraw = (() => {
   const TOOLS = ["pen", "erase", "line", "arrow", "rect", "circle", "oval", "text"];
   const SHAPE_TOOLS = ["line", "arrow", "rect", "circle", "oval"];
 
+  function paintCanvasWidth(ctx) {
+    const m = ctx.getTransform && ctx.getTransform();
+    const scale = m && m.a ? m.a : 1;
+    return Math.max(1, ctx.canvas.width / scale);
+  }
+
+  function strokeViewWidth(ctx, raw) {
+    const sz = Number(raw) || 4;
+    const canvasW = paintCanvasWidth(ctx);
+    // Shared board is 1280 wide; slider values (2–24) must not stay 1px after CSS scale.
+    if (sz <= 24 && canvasW >= 1200) return sz * (canvasW / 300);
+    return sz;
+  }
+
   function paintOneStroke(ctx, stroke) {
     const type = stroke.type || stroke.t || "pen";
     const pts = stroke.points || stroke.p || [];
     const col = stroke.color || stroke.c || "#0f172a";
-    const sz = stroke.size || stroke.s || 4;
+    const sz = strokeViewWidth(ctx, stroke.size || stroke.s || 4);
 
     if (type === "text") {
       const text = String(stroke.text || stroke.tx || "").slice(0, 80);

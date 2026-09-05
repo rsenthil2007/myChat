@@ -136,7 +136,7 @@ myChat/
 
 ## Native Android (Kotlin)
 
-v0.4.7 chat client lives in [`android/`](android/README.md). New phones **request access**; an admin admits them (app **Admin** screen or `https://chat.microbear.in/admin`). Firebase SMS code is still in the repo but unused until billing is on. Debug APK is built by GitHub Actions.
+v0.4.8 chat client lives in [`android/`](android/README.md). New phones **request access**; an admin admits them (app **Admin** screen or `https://chat.microbear.in/admin`). Firebase SMS code is still in the repo but unused until billing is on. Debug APK is built by GitHub Actions.
 
 ## Wrap as a mobile app (WebInto.app)
 
