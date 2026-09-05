@@ -149,7 +149,8 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                                         BoardStroke(
                                             type = state.boardTool,
                                             color = state.boardColor,
-                                            size = state.boardPenSize,
+                                            size = sliderToLogicalPenSize(state.boardPenSize, logicalW),
+                                            sizeVersion = BOARD_PEN_SIZE_VERSION,
                                             points = viewPointsToLogical(
                                                 current,
                                                 viewW,

@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 MAX_LAYERS = 24
 MAX_STROKES_PER_LAYER = 400
 MAX_POINTS_PER_STROKE = 12000
-# Slider values 2–24 are on-screen thickness (same as the sketch pad). Clients
-# map them into their paint space; the server stores `s` unchanged.
+# Slider 2–24 is on-screen thickness (same as the sketch pad). Clients
+# map them into 1280-space pixels (`s` with `sv=2`); the server stores
+# `s` / `sv` unchanged.
 MAX_PEN_SIZE = 128
 # RGB Euclidean distance under this counts as "same" color across members
 COLOR_NEAR_THRESHOLD = 48
@@ -227,6 +228,36 @@ def claim_color(room: dict, author_id: str, author_name: str, color: str) -> dic
 ALLOWED_STROKE_TYPES = {"pen", "erase", "line", "arrow", "rect", "circle", "oval", "text"}
 
 
+def _stroke_pen_size(item: dict) -> float:
+    raw = item.get("s")
+    if raw is None:
+        raw = item.get("size")
+    try:
+        value = float(4 if raw is None else raw)
+    except (TypeError, ValueError):
+        value = 4.0
+    return max(1.0, min(MAX_PEN_SIZE, value))
+
+
+def _stroke_size_version(item: dict) -> int:
+    raw = item.get("sv")
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pen_wire(item: dict) -> dict:
+    """Shared `s` / `sv` fields. sv=2 means s is in the 1280 board space."""
+    out = {"s": _stroke_pen_size(item)}
+    sv = _stroke_size_version(item)
+    if sv >= 2:
+        out["sv"] = sv
+    return out
+
+
 def _normalize_strokes(raw, board: dict, author_id: str) -> list:
     if not isinstance(raw, list):
         raise ValueError("strokes must be a list")
@@ -255,7 +286,7 @@ def _normalize_strokes(raw, board: dict, author_id: str) -> list:
                 {
                     "t": "text",
                     "c": color,
-                    "s": max(1, min(MAX_PEN_SIZE, float(item.get("s") or item.get("size") or 4))),
+                    **_pen_wire(item),
                     "p": [float(pts[0]), float(pts[1])],
                     "tx": text,
                 }
@@ -273,7 +304,7 @@ def _normalize_strokes(raw, board: dict, author_id: str) -> list:
         entry = {
             "t": kind,
             "c": color,
-            "s": max(1, min(MAX_PEN_SIZE, float(item.get("s") or item.get("size") or 4))),
+            **_pen_wire(item),
             "p": [float(x) for x in pts],
         }
         out.append(entry)

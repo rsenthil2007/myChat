@@ -63,9 +63,10 @@ data class BoardLayer(
 data class BoardStrokeDto(
     val t: String = "pen",
     val c: String = "#0f172a",
-    val s: Float = 4f,
+    @SerializedName(value = "s", alternate = ["size"]) val penSize: Float = 4f,
     val p: List<Float> = emptyList(),
     val tx: String? = null,
+    val sv: Int = 0,
 )
 
 data class BoardSwatch(

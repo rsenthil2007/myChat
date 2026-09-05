@@ -23,20 +23,24 @@ data class BoardStroke(
     val size: Float,
     val points: List<Float>,
     val text: String = "",
+    val sizeVersion: Int = 0,
 )
 
 fun io.microbear.mychat.data.BoardStrokeDto.toStroke(): BoardStroke = BoardStroke(
     type = t.ifBlank { "pen" },
     color = c.ifBlank { "#0f172a" },
-    size = s,
+    size = if (penSize > 0f) penSize else 4f,
     points = p,
     text = tx.orEmpty(),
+    sizeVersion = sv,
 )
 
 fun BoardStroke.toPayload(): Map<String, Any?> = buildMap {
     put("t", type)
     put("c", color)
     put("s", size.toDouble())
+    put("size", size.toDouble())
+    if (sizeVersion >= BOARD_PEN_SIZE_VERSION) put("sv", sizeVersion)
     put("p", points)
     if (type == "text" && text.isNotBlank()) put("tx", text)
 }
@@ -67,7 +71,12 @@ fun DrawScope.paintBoardStroke(
 ) {
     val pts = stroke.points
     val col = parseHexColor(stroke.color)
-    val sz = strokeViewPenSize(stroke.size, size.width, if (srcW > 0) srcW else BOARD_LOGICAL_W)
+    val sz = strokeViewPenSize(
+        stroke.size,
+        size.width,
+        if (srcW > 0) srcW else BOARD_LOGICAL_W,
+        stroke.sizeVersion,
+    )
     if (stroke.type == "text") {
         if (stroke.text.isBlank() || pts.size < 2) return
         val x = pts[0] * sx
@@ -173,7 +182,7 @@ fun DrawScope.paintFreehandStroke(
     erase: Boolean = false,
 ) {
     if (points.size < 2) return
-    val width = if (erase) max(size * 2f, 8f) else size
+    val width = if (erase) max(size * 2f, 8f) else size.coerceAtLeast(1.5f)
     val blend = if (erase) BlendMode.Clear else BlendMode.SrcOver
     if (points.size == 2) {
         drawCircle(color, width / 2f, Offset(points[0], points[1]), blendMode = blend)

@@ -26,19 +26,36 @@ fun toLogicalY(localY: Float, viewH: Float, logicalH: Int): Float {
     return localY * logicalH / viewH
 }
 
+/** Wire `sv` — 2 means `s` is already in the 1280-wide board space. */
+const val BOARD_PEN_SIZE_VERSION = 2
+
 /** On-screen stroke width — identical to SketchScreen. */
 fun sketchViewPenSize(slider: Float, viewW: Float): Float =
     slider * (viewW.coerceAtLeast(SKETCH_SIZE_REF) / SKETCH_SIZE_REF)
 
+/** Slider 4 on a 300px pad → 4 × 1280/300 logical pixels on the shared board. */
+fun sliderToLogicalPenSize(slider: Float, logicalW: Int): Float =
+    slider * (logicalW.coerceAtLeast(1).toFloat() / SKETCH_SIZE_REF)
+
 /**
  * Convert a stored stroke `s` into on-screen pixels.
- * Slider-range values (2–24) stay at SketchScreen thickness and are NOT
- * scaled by the 1280 board. Larger values are legacy logical widths.
+ * Version 2+ values live in the same space as the points (logical 1280).
+ * Legacy slider values (2–24) are mapped the same way SketchScreen does.
  */
-fun strokeViewPenSize(stored: Float, viewW: Float, logicalW: Int): Float {
-    if (stored <= 24f) return sketchViewPenSize(stored, viewW)
-    if (viewW <= 0f || logicalW <= 0) return stored.coerceAtLeast(1.5f)
-    return (stored * viewW / logicalW).coerceAtLeast(1.5f)
+fun strokeViewPenSize(
+    stored: Float,
+    viewW: Float,
+    logicalW: Int,
+    sizeVersion: Int = 0,
+): Float {
+    val lw = logicalW.coerceAtLeast(1)
+    val logical = when {
+        sizeVersion >= BOARD_PEN_SIZE_VERSION -> stored
+        stored <= 24f -> sliderToLogicalPenSize(stored, lw)
+        else -> stored
+    }.coerceAtLeast(1.5f)
+    if (viewW <= 0f) return logical
+    return (logical * viewW / lw).coerceAtLeast(1.5f)
 }
 
 fun viewPointsToLogical(

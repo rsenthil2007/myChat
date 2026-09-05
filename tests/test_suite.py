@@ -841,6 +841,30 @@ class WhiteboardTest(unittest.TestCase):
         )
         self.assertEqual(room["whiteboard"]["layers"][0]["strokes"][0]["s"], 4)
 
+    def test_logical_pen_size_and_version_are_stored(self):
+        room = wb.join_board(self.room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "s": 51.2, "sv": 2, "p": [10, 20, 30, 40]}],
+        )
+        stroke = room["whiteboard"]["layers"][0]["strokes"][0]
+        self.assertAlmostEqual(stroke["s"], 51.2)
+        self.assertEqual(stroke["sv"], 2)
+
+    def test_pen_size_alias_is_accepted(self):
+        room = wb.join_board(self.room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "size": 12, "p": [10, 20, 30, 40]}],
+        )
+        self.assertEqual(room["whiteboard"]["layers"][0]["strokes"][0]["s"], 12)
+
     def test_long_stroke_is_accepted(self):
         room = wb.join_board(self.room, "u1", "Alice")
         alice = room["whiteboard"]["layers"][0]["assignedColor"]

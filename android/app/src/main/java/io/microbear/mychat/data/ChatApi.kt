@@ -8,7 +8,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 class ChatApi(
-    private val gson: Gson = Gson(),
+    private val gson: Gson = boardGson(),
 ) {
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()

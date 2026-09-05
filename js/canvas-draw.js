@@ -15,9 +15,29 @@ const CanvasDraw = (() => {
     return Math.max(1, ctx.canvas.width / scale);
   }
 
-  function strokePaintWidth(stored, paintW) {
+  function readPenSize(stroke) {
+    if (stroke.s != null && stroke.s !== "") {
+      const n = Number(stroke.s);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    if (stroke.size != null && stroke.size !== "") {
+      const n = Number(stroke.size);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 4;
+  }
+
+  function readSizeVersion(stroke) {
+    const n = Number(stroke.sv || stroke.sizeVersion || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function strokePaintWidth(stored, paintW, sizeVersion) {
     const sz = Number(stored) || 4;
     const w = Math.max(1, Number(paintW) || 1);
+    const ver = Number(sizeVersion) || 0;
+    // sv>=2: `s` is already in the same 1280 space as the points.
+    if (ver >= 2) return Math.max(1.5, sz);
     // Shared 1280 board: slider 2–24 is sketch thickness, not 1280-space pixels.
     // Chat sketches already store pixel widths on a ~300–800 canvas — leave those.
     if (sz <= 24 && w >= 1200) return Math.max(1.5, sz * (w / 300));
@@ -28,7 +48,7 @@ const CanvasDraw = (() => {
     const type = stroke.type || stroke.t || "pen";
     const pts = stroke.points || stroke.p || [];
     const col = stroke.color || stroke.c || "#0f172a";
-    const sz = strokePaintWidth(stroke.size || stroke.s || 4, paintCanvasWidth(ctx));
+    const sz = strokePaintWidth(readPenSize(stroke), paintCanvasWidth(ctx), readSizeVersion(stroke));
 
     if (type === "text") {
       const text = String(stroke.text || stroke.tx || "").slice(0, 80);
@@ -139,14 +159,24 @@ const CanvasDraw = (() => {
     (strokes || []).forEach((stroke) => paintOneStroke(ctx, stroke));
   }
 
-  function toWireStroke(s) {
+  function toWireStroke(s, logicalW) {
+    let value = readPenSize(s);
+    let sv = readSizeVersion(s);
+    const lw = Number(logicalW) || 0;
+    // Board pad: convert slider 2–24 into 1280-space pixels so sharing keeps thickness.
+    if (sv < 2 && lw >= 1200 && value <= 24) {
+      value = value * (lw / 300);
+      sv = 2;
+    }
     const out = {
-      t: s.type || "pen",
-      c: s.color,
-      s: s.size,
-      p: s.points
+      t: s.type || s.t || "pen",
+      c: s.color || s.c,
+      s: value,
+      size: value,
+      p: s.points || s.p
     };
-    if (s.text) out.tx = String(s.text).slice(0, 80);
+    if (sv >= 2) out.sv = sv;
+    if (s.text || s.tx) out.tx = String(s.text || s.tx).slice(0, 80);
     return out;
   }
 
@@ -154,7 +184,8 @@ const CanvasDraw = (() => {
     return {
       type: stroke.t || stroke.type || "pen",
       color: stroke.c || stroke.color || "#0f172a",
-      size: stroke.s || stroke.size || 4,
+      size: readPenSize(stroke),
+      sv: readSizeVersion(stroke),
       points: stroke.p || stroke.points || [],
       text: stroke.tx || stroke.text || ""
     };
@@ -405,7 +436,7 @@ const CanvasDraw = (() => {
       return {
         w: m.logicalW,
         h: m.logicalH,
-        strokes: strokes.map(toWireStroke)
+        strokes: strokes.map((s) => toWireStroke(s, m.logicalW))
       };
     }
 

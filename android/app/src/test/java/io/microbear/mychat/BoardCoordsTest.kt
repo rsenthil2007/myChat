@@ -53,6 +53,26 @@ class BoardCoordsTest {
     }
 
     @Test
+    fun logicalPenSizeMatchesSketchPadOnPhone() {
+        val viewW = 360f
+        val stored = sliderToLogicalPenSize(12f, 1280)
+        assertEquals(12f * 1280f / 300f, stored, 0.01f)
+        assertEquals(
+            sketchViewPenSize(12f, viewW),
+            strokeViewPenSize(stored, viewW, 1280, BOARD_PEN_SIZE_VERSION),
+            0.02f,
+        )
+    }
+
+    @Test
+    fun slider12AndSlider4StayDifferentOnSharedBoard() {
+        val viewW = 360f
+        val thin = strokeViewPenSize(sliderToLogicalPenSize(4f, 1280), viewW, 1280, 2)
+        val thick = strokeViewPenSize(sliderToLogicalPenSize(12f, 1280), viewW, 1280, 2)
+        assertEquals(true, thick > thin * 2.5f)
+    }
+
+    @Test
     fun viewPointsToLogicalRoundTrip() {
         val view = listOf(10f, 20f, 30f, 40f)
         val logical = viewPointsToLogical(view, 320f, 400f, 1280, 1600)
