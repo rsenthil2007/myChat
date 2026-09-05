@@ -1,6 +1,7 @@
 package io.microbear.mychat
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,23 +28,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val Panel = Color(0xFF1E293B)
 private val Teal = Color(0xFF2DD4BF)
 private val Mist = Color(0xFFE2E8F0)
 private val Mute = Color(0xFF94A3B8)
 private val Danger = Color(0xFFF87171)
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modifier) {
     var current by remember { mutableStateOf<List<Float>>(emptyList()) }
@@ -53,6 +55,18 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
         it.hex.equals(state.boardColor, ignoreCase = true)
     }?.name ?: state.boardColor
     val others = state.board.layers.filter { it.authorId != state.authorId }
+    val othersImage = remember(others, logicalW, logicalH) {
+        val strokes = others.flatMap { layer -> layer.strokes.map { it.toStroke() } }
+        DrawingRaster.bitmapFromStrokes(logicalW, logicalH, strokes, opaque = true).asImageBitmap()
+    }
+    val mineImage = remember(state.boardMineStrokes, logicalW, logicalH) {
+        DrawingRaster.bitmapFromStrokes(
+            logicalW,
+            logicalH,
+            state.boardMineStrokes,
+            opaque = false,
+        ).asImageBitmap()
+    }
 
     Column(modifier.fillMaxSize()) {
         Text(
@@ -138,41 +152,28 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                         detectDragGestures(
                             onDragStart = { offset ->
                                 vm.setBoardDragging(true)
-                                val x = toLogicalX(offset.x, size.width.toFloat(), logicalW)
-                                val y = toLogicalY(offset.y, size.height.toFloat(), logicalH)
-                                current = appendBoardPoint(emptyList(), x, y)
+                                current = listOf(offset.x, offset.y)
                             },
                             onDrag = { change, _ ->
                                 change.consume()
-                                val viewW = size.width.toFloat()
-                                val viewH = size.height.toFloat()
-                                var next = current
-                                change.historical.forEach { sample ->
-                                    next = appendBoardPoint(
-                                        next,
-                                        toLogicalX(sample.position.x, viewW, logicalW),
-                                        toLogicalY(sample.position.y, viewH, logicalH),
-                                    )
-                                }
-                                current = appendBoardPoint(
-                                    next,
-                                    toLogicalX(change.position.x, viewW, logicalW),
-                                    toLogicalY(change.position.y, viewH, logicalH),
-                                )
+                                current = current + listOf(change.position.x, change.position.y)
                             },
                             onDragEnd = {
-                                val logicalSize = toLogicalPenSize(
-                                    state.boardPenSize,
-                                    size.width.toFloat(),
-                                    logicalW,
-                                )
+                                val viewW = size.width.toFloat()
+                                val viewH = size.height.toFloat()
                                 if (current.size >= 2) {
                                     vm.addBoardStroke(
                                         BoardStroke(
                                             type = state.boardTool,
                                             color = state.boardColor,
-                                            size = logicalSize,
-                                            points = current,
+                                            size = toLogicalPenSize(state.boardPenSize, viewW, logicalW),
+                                            points = viewPointsToLogical(
+                                                current,
+                                                viewW,
+                                                viewH,
+                                                logicalW,
+                                                logicalH,
+                                            ),
                                         ),
                                     )
                                 } else {
@@ -187,29 +188,28 @@ fun BoardScreen(state: ChatUiState, vm: ChatViewModel, modifier: Modifier = Modi
                         )
                     },
             ) {
+                Image(
+                    bitmap = othersImage,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize(),
+                )
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
                 ) {
-                    others.forEach { layer ->
-                        paintBoardStrokes(
-                            layer.strokes.map { it.toStroke() },
-                            logicalW,
-                            logicalH,
-                        )
-                    }
-                    paintBoardStrokes(state.boardMineStrokes, logicalW, logicalH)
+                    drawImage(
+                        image = mineImage,
+                        dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                        filterQuality = FilterQuality.High,
+                    )
                     if (current.size >= 2) {
-                        val liveSize = toLogicalPenSize(
-                            state.boardPenSize,
-                            size.width,
-                            logicalW,
-                        )
-                        paintBoardStroke(
-                            BoardStroke(state.boardTool, state.boardColor, liveSize, current),
-                            size.width / logicalW,
-                            size.height / logicalH,
+                        paintFreehandStroke(
+                            color = parseHexColor(state.boardColor),
+                            size = sketchViewPenSize(state.boardPenSize, size.width),
+                            points = current,
+                            erase = state.boardTool == "erase",
                         )
                     }
                 }

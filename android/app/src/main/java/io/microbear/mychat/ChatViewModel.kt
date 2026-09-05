@@ -67,7 +67,7 @@ data class ChatUiState(
     val board: WhiteboardState = WhiteboardState(),
     val boardJoined: Boolean = false,
     val boardColor: String = "#0f172a",
-    val boardPenSize: Float = 12f,
+    val boardPenSize: Float = 4f,
     val boardTool: String = "pen",
     val boardMineStrokes: List<BoardStroke> = emptyList(),
     val boardDragging: Boolean = false,

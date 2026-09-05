@@ -819,6 +819,17 @@ class WhiteboardTest(unittest.TestCase):
         self.assertEqual(room["whiteboard"]["w"], wb.CANONICAL_W)
         self.assertEqual(room["whiteboard"]["h"], wb.CANONICAL_H)
 
+    def test_stroke_size_keeps_sketch_scale(self):
+        room = wb.join_board(self.room, "u1", "Alice")
+        alice = room["whiteboard"]["layers"][0]["assignedColor"]
+        room = wb.apply_strokes(
+            room,
+            "u1",
+            "Alice",
+            [{"c": alice, "s": 96, "p": [10, 20, 30, 40]}],
+        )
+        self.assertAlmostEqual(room["whiteboard"]["layers"][0]["strokes"][0]["s"], 96)
+
     def test_board_upgrades_old_16x9_size(self):
         room = {
             "whiteboard": {"w": 1280, "h": 720, "layers": []},

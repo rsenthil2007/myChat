@@ -33,9 +33,30 @@ class BoardCoordsTest {
     }
 
     @Test
-    fun toLogicalPenSizeMapsViewPixelsOntoTheBoard() {
-        val logical = toLogicalPenSize(5f, 320f, 1280)
-        assertEquals(20f, logical, 0.01f)
+    fun sketchViewPenSizeMatchesRoomPad() {
+        assertEquals(4f, sketchViewPenSize(4f, 300f), 0.01f)
+        assertEquals(8f, sketchViewPenSize(4f, 600f), 0.01f)
+    }
+
+    @Test
+    fun toLogicalPenSizeKeepsSketchScreenThickness() {
+        val viewW = 360f
+        val slider = 4f
+        val viewSize = sketchViewPenSize(slider, viewW)
+        val logical = toLogicalPenSize(slider, viewW, 1280)
+        val drawnBack = logical * viewW / 1280f
+        assertEquals(viewSize, drawnBack, 0.02f)
+        assertEquals(4f * 360f / 300f, viewSize, 0.01f)
+    }
+
+    @Test
+    fun viewPointsToLogicalRoundTrip() {
+        val view = listOf(10f, 20f, 30f, 40f)
+        val logical = viewPointsToLogical(view, 320f, 400f, 1280, 1600)
+        assertEquals(40f, logical[0], 0.01f)
+        assertEquals(80f, logical[1], 0.01f)
+        assertEquals(120f, logical[2], 0.01f)
+        assertEquals(160f, logical[3], 0.01f)
     }
 
     @Test

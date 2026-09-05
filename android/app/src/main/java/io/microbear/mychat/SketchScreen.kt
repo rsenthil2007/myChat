@@ -31,9 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -146,28 +144,20 @@ fun SketchScreen(busy: Boolean, onCancel: () -> Unit, onSend: (Int, Int, List<Sk
                     )
                 },
         ) {
-            fun drawStroke(stroke: SketchStroke) {
-                val pts = stroke.points
-                if (pts.size < 2) return
-                val col = colorMap[stroke.color] ?: Color(0xFF0F172A)
-                if (pts.size == 2) {
-                    drawCircle(col, stroke.size / 2f, Offset(pts[0], pts[1]))
-                    return
-                }
-                var i = 0
-                while (i + 3 < pts.size) {
-                    drawLine(
-                        color = col,
-                        start = Offset(pts[i], pts[i + 1]),
-                        end = Offset(pts[i + 2], pts[i + 3]),
-                        strokeWidth = stroke.size,
-                        cap = StrokeCap.Round,
-                    )
-                    i += 2
-                }
+            strokes.forEach { stroke ->
+                paintFreehandStroke(
+                    colorMap[stroke.color] ?: Color(0xFF0F172A),
+                    stroke.size,
+                    stroke.points,
+                )
             }
-            strokes.forEach { drawStroke(it) }
-            if (current.size >= 2) drawStroke(SketchStroke(colorHex, size, current))
+            if (current.size >= 2) {
+                paintFreehandStroke(
+                    colorMap[colorHex] ?: Color(0xFF0F172A),
+                    size,
+                    current,
+                )
+            }
         }
     }
 }

@@ -7,6 +7,10 @@ import kotlin.math.hypot
 const val BOARD_LOGICAL_W = 1280
 const val BOARD_LOGICAL_H = 1600
 
+/** Same reference width SketchScreen uses so slider 4 ≈ 4px on a 300px pad. */
+const val SKETCH_SIZE_REF = 300f
+const val MAX_LOGICAL_PEN = 128f
+
 fun boardLogicalSize(board: WhiteboardState): Pair<Int, Int> {
     val w = if (board.w > 0) board.w else BOARD_LOGICAL_W
     val h = if (board.h > 0) board.h else BOARD_LOGICAL_H
@@ -23,10 +27,33 @@ fun toLogicalY(localY: Float, viewH: Float, logicalH: Int): Float {
     return localY * logicalH / viewH
 }
 
-/** Map on-screen pen width into the shared 1280-wide logical canvas. */
-fun toLogicalPenSize(viewPx: Float, viewW: Float, logicalW: Int): Float {
-    if (viewW <= 0f || logicalW <= 0) return viewPx.coerceIn(1f, 48f)
-    return (viewPx * logicalW / viewW).coerceIn(1f, 48f)
+/** On-screen stroke width — identical to SketchScreen. */
+fun sketchViewPenSize(slider: Float, viewW: Float): Float =
+    slider * (viewW.coerceAtLeast(SKETCH_SIZE_REF) / SKETCH_SIZE_REF)
+
+/** Store SketchScreen's on-screen width in the shared logical canvas. */
+fun toLogicalPenSize(slider: Float, viewW: Float, logicalW: Int): Float {
+    val viewSize = sketchViewPenSize(slider, viewW)
+    if (viewW <= 0f || logicalW <= 0) return viewSize.coerceIn(1f, MAX_LOGICAL_PEN)
+    return (viewSize * logicalW / viewW).coerceIn(1f, MAX_LOGICAL_PEN)
+}
+
+fun viewPointsToLogical(
+    points: List<Float>,
+    viewW: Float,
+    viewH: Float,
+    logicalW: Int,
+    logicalH: Int,
+): List<Float> {
+    if (points.size < 2) return emptyList()
+    val out = ArrayList<Float>(points.size)
+    var i = 0
+    while (i + 1 < points.size) {
+        out.add(toLogicalX(points[i], viewW, logicalW))
+        out.add(toLogicalY(points[i + 1], viewH, logicalH))
+        i += 2
+    }
+    return out
 }
 
 fun quantizeBoard(n: Float): Float = (kotlin.math.round(n * 10f) / 10f)

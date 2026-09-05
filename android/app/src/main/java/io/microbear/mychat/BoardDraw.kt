@@ -150,16 +150,40 @@ fun DrawScope.paintBoardStroke(stroke: BoardStroke, sx: Float = 1f, sy: Float = 
         }
         return
     }
-    if (pts.size == 2) {
-        drawCircle(col, strokeStyle.width / 2f, Offset(pts[0] * sx, pts[1] * sy), blendMode = blend)
-        return
-    }
-    val path = Path()
-    path.moveTo(pts[0] * sx, pts[1] * sy)
-    var i = 2
+    val viewPts = ArrayList<Float>(pts.size)
+    var i = 0
     while (i + 1 < pts.size) {
-        path.lineTo(pts[i] * sx, pts[i + 1] * sy)
+        viewPts.add(pts[i] * sx)
+        viewPts.add(pts[i + 1] * sy)
         i += 2
     }
-    drawPath(path, col, style = strokeStyle, blendMode = blend)
+    paintFreehandStroke(col, sz, viewPts, erase)
+}
+
+/** Same round-capped segments SketchScreen uses — keeps thickness and continuity. */
+fun DrawScope.paintFreehandStroke(
+    color: Color,
+    size: Float,
+    points: List<Float>,
+    erase: Boolean = false,
+) {
+    if (points.size < 2) return
+    val width = if (erase) max(size * 2f, 8f) else size
+    val blend = if (erase) BlendMode.Clear else BlendMode.SrcOver
+    if (points.size == 2) {
+        drawCircle(color, width / 2f, Offset(points[0], points[1]), blendMode = blend)
+        return
+    }
+    var i = 0
+    while (i + 3 < points.size) {
+        drawLine(
+            color = color,
+            start = Offset(points[i], points[i + 1]),
+            end = Offset(points[i + 2], points[i + 3]),
+            strokeWidth = width,
+            cap = StrokeCap.Round,
+            blendMode = blend,
+        )
+        i += 2
+    }
 }

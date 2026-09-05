@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 
 MAX_LAYERS = 24
 MAX_STROKES_PER_LAYER = 400
+# Sketch-style sizes map into logical space (slider 24 on 1280 ≈ 102).
+MAX_PEN_SIZE = 128
 # RGB Euclidean distance under this counts as "same" color across members
 COLOR_NEAR_THRESHOLD = 48
 
@@ -251,7 +253,7 @@ def _normalize_strokes(raw, board: dict, author_id: str) -> list:
                 {
                     "t": "text",
                     "c": color,
-                    "s": max(1, min(48, float(item.get("s") or item.get("size") or 4))),
+                    "s": max(1, min(MAX_PEN_SIZE, float(item.get("s") or item.get("size") or 4))),
                     "p": [float(pts[0]), float(pts[1])],
                     "tx": text,
                 }
@@ -269,7 +271,7 @@ def _normalize_strokes(raw, board: dict, author_id: str) -> list:
         entry = {
             "t": kind,
             "c": color,
-            "s": max(1, min(48, float(item.get("s") or item.get("size") or 4))),
+            "s": max(1, min(MAX_PEN_SIZE, float(item.get("s") or item.get("size") or 4))),
             "p": [float(x) for x in pts],
         }
         out.append(entry)

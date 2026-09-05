@@ -50,24 +50,63 @@ object DrawingRaster {
         BitmapFactory.decodeByteArray(png, 0, png.size)
 
     private fun paintStroke(canvas: Canvas, stroke: JsonObject) {
-        val type = str(stroke, "t", "type", "pen")
-        val pts = floats(stroke.get("p") ?: stroke.get("points"))
-        val col = parseColor(str(stroke, "c", "color", "#0f172a"))
-        val sz = num(stroke, "s", "size", 4f)
+        paintStroke(
+            canvas,
+            type = str(stroke, "t", "type", "pen"),
+            col = parseColor(str(stroke, "c", "color", "#0f172a")),
+            sz = num(stroke, "s", "size", 4f),
+            pts = floats(stroke.get("p") ?: stroke.get("points")),
+            text = str(stroke, "tx", "text", ""),
+        )
+    }
 
+    fun bitmapFromStrokes(
+        width: Int,
+        height: Int,
+        strokes: List<BoardStroke>,
+        opaque: Boolean,
+    ): Bitmap {
+        val w = width.coerceIn(1, 1600)
+        val h = height.coerceIn(1, 1600)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        if (opaque) {
+            canvas.drawColor(Color.WHITE)
+        } else {
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        }
+        strokes.forEach { stroke ->
+            paintStroke(
+                canvas,
+                type = stroke.type,
+                col = parseColor(stroke.color),
+                sz = stroke.size,
+                pts = stroke.points.toFloatArray(),
+                text = stroke.text,
+            )
+        }
+        return bmp
+    }
+
+    private fun paintStroke(
+        canvas: Canvas,
+        type: String,
+        col: Int,
+        sz: Float,
+        pts: FloatArray,
+        text: String,
+    ) {
         if (type == "text") {
-            val text = str(stroke, "tx", "text", "").take(80)
             if (text.isEmpty() || pts.size < 2) return
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = col
                 textSize = max(12f, sz * 3f)
                 isFakeBoldText = true
             }
-            canvas.drawText(text, pts[0], pts[1] + paint.textSize, paint)
+            canvas.drawText(text.take(80), pts[0], pts[1] + paint.textSize, paint)
             return
         }
         if (pts.size < 2) return
-
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
@@ -79,73 +118,76 @@ object DrawingRaster {
                 color = Color.BLACK
             }
         }
-
         val shapes = setOf("line", "arrow", "rect", "circle", "oval")
         if (type in shapes) {
-            if (pts.size < 4) return
-            val x1 = pts[0]
-            val y1 = pts[1]
-            val x2 = pts[2]
-            val y2 = pts[3]
-            when (type) {
-                "rect" -> canvas.drawRect(
-                    min(x1, x2),
-                    min(y1, y2),
-                    max(x1, x2) + 0.01f,
-                    max(y1, y2) + 0.01f,
-                    paint,
-                )
-                "oval", "circle" -> {
-                    var left = min(x1, x2)
-                    var top = min(y1, y2)
-                    var w = abs(x2 - x1).coerceAtLeast(1f)
-                    var h = abs(y2 - y1).coerceAtLeast(1f)
-                    if (type == "circle") {
-                        val side = max(w, h)
-                        if (x2 < x1) left = x1 - side
-                        if (y2 < y1) top = y1 - side
-                        w = side
-                        h = side
-                    }
-                    canvas.drawOval(left, top, left + w, top + h, paint)
-                }
-                else -> {
-                    canvas.drawLine(x1, y1, x2, y2, paint)
-                    if (type == "arrow") {
-                        val angle = atan2(y2 - y1, x2 - x1)
-                        val head = max(10f, sz * 3f)
-                        val fill = Paint(paint).apply { style = Paint.Style.FILL }
-                        val path = android.graphics.Path()
-                        path.moveTo(x2, y2)
-                        path.lineTo(
-                            x2 - head * cos(angle - Math.PI / 6).toFloat(),
-                            y2 - head * sin(angle - Math.PI / 6).toFloat(),
-                        )
-                        path.lineTo(
-                            x2 - head * cos(angle + Math.PI / 6).toFloat(),
-                            y2 - head * sin(angle + Math.PI / 6).toFloat(),
-                        )
-                        path.close()
-                        canvas.drawPath(path, fill)
-                    }
-                }
-            }
+            paintShape(canvas, paint, type, sz, pts)
             return
         }
+        paintFreehand(canvas, paint, pts)
+    }
 
+    private fun paintShape(canvas: Canvas, paint: Paint, type: String, sz: Float, pts: FloatArray) {
+        if (pts.size < 4) return
+        val x1 = pts[0]
+        val y1 = pts[1]
+        val x2 = pts[2]
+        val y2 = pts[3]
+        when (type) {
+            "rect" -> canvas.drawRect(
+                min(x1, x2),
+                min(y1, y2),
+                max(x1, x2) + 0.01f,
+                max(y1, y2) + 0.01f,
+                paint,
+            )
+            "oval", "circle" -> {
+                var left = min(x1, x2)
+                var top = min(y1, y2)
+                var w = abs(x2 - x1).coerceAtLeast(1f)
+                var h = abs(y2 - y1).coerceAtLeast(1f)
+                if (type == "circle") {
+                    val side = max(w, h)
+                    if (x2 < x1) left = x1 - side
+                    if (y2 < y1) top = y1 - side
+                    w = side
+                    h = side
+                }
+                canvas.drawOval(left, top, left + w, top + h, paint)
+            }
+            else -> {
+                canvas.drawLine(x1, y1, x2, y2, paint)
+                if (type == "arrow") {
+                    val angle = atan2(y2 - y1, x2 - x1)
+                    val head = max(10f, sz * 3f)
+                    val fill = Paint(paint).apply { style = Paint.Style.FILL }
+                    val path = android.graphics.Path()
+                    path.moveTo(x2, y2)
+                    path.lineTo(
+                        x2 - head * cos(angle - Math.PI / 6).toFloat(),
+                        y2 - head * sin(angle - Math.PI / 6).toFloat(),
+                    )
+                    path.lineTo(
+                        x2 - head * cos(angle + Math.PI / 6).toFloat(),
+                        y2 - head * sin(angle + Math.PI / 6).toFloat(),
+                    )
+                    path.close()
+                    canvas.drawPath(path, fill)
+                }
+            }
+        }
+    }
+
+    private fun paintFreehand(canvas: Canvas, paint: Paint, pts: FloatArray) {
         if (pts.size == 2) {
             paint.style = Paint.Style.FILL
             canvas.drawCircle(pts[0], pts[1], paint.strokeWidth / 2f, paint)
             return
         }
-        val path = android.graphics.Path()
-        path.moveTo(pts[0], pts[1])
-        var i = 2
-        while (i + 1 < pts.size) {
-            path.lineTo(pts[i], pts[i + 1])
+        var i = 0
+        while (i + 3 < pts.size) {
+            canvas.drawLine(pts[i], pts[i + 1], pts[i + 2], pts[i + 3], paint)
             i += 2
         }
-        canvas.drawPath(path, paint)
     }
 
     private fun str(obj: JsonObject, a: String, b: String, fallback: String): String {
